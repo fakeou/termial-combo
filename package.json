@@ -1,0 +1,45 @@
+{
+  "name": "termial-combo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Warp-first AI coding context daemon and overlay feasibility POC.",
+  "scripts": {
+    "dev": "tsx src/cli/daemon.ts",
+    "daemon": "tsx src/cli/daemon.ts",
+    "overlay": "pnpm build:electron && tsx src/overlay/start.ts",
+    "overlay:combo": "OVERLAY_INPUT_COUNTER=1 pnpm overlay",
+    "overlay:vite": "vite --host 127.0.0.1 --port 5173",
+    "overlay:electron": "electron dist/electron-app",
+    "build:electron": "tsc -p tsconfig.electron.json && mkdir -p dist/electron-app && cp src/electron/main.cjs dist/electron-app/main.cjs && cp src/electron/app-package.json dist/electron-app/package.json",
+    "detect:warp": "tsx src/cli/detectWarp.ts",
+    "events:test": "tsx scripts/send-test-events.ts",
+    "codex:scan": "tsx src/cli/scanCodexSession.ts",
+    "hook:claude": "tsx src/hooks/claude.ts",
+    "hook:codex": "tsx src/hooks/codex.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "bin": {
+    "termial-combo": "./dist/cli/daemon.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "active-win": "^9.0.0",
+    "electron": "^42.0.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tsx": "^4.20.6",
+    "vite": "^8.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

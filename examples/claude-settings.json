@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pnpm --dir /Users/ousu/Documents/work/termial-combo hook:claude"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pnpm --dir /Users/ousu/Documents/work/termial-combo hook:claude"
+          }
+        ]
+      }
+    ]
+  }
+}

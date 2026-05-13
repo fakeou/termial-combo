@@ -1,0 +1,2 @@
+{"hook_event_name":"UserPromptSubmit","session_id":"codex-session","cwd":"/repo","turn_id":"turn-1","prompt":"请实现一个 POC"}
+{"hook_event_name":"Stop","session_id":"codex-session","cwd":"/repo","turn_id":"turn-1","last_assistant_message":"任务完成，测试通过。"}
