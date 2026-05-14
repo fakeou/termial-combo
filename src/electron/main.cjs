@@ -39,6 +39,8 @@ let lastSentComboWindowMs = undefined;
 let selectedComboStyle = "arcade";
 let comboWindowMs = initialComboWindowMs;
 const seenStickerTriggerIds = new Set();
+const seenStickerTriggerIdOrder = [];
+const maxSeenStickerTriggerIds = 500;
 
 app.setActivationPolicy("accessory");
 
@@ -326,7 +328,7 @@ function stickerCommandFromEvent(event) {
   const asset = stickerAssetFromUnknown(event.metadata.asset);
   if (!asset) return undefined;
 
-  seenStickerTriggerIds.add(triggerId);
+  rememberStickerTriggerId(triggerId);
   const command = {
     triggerId,
     asset,
@@ -340,6 +342,20 @@ function stickerCommandFromEvent(event) {
   if (ruleId) command.ruleId = ruleId;
 
   return command;
+}
+
+function rememberStickerTriggerId(triggerId) {
+  if (seenStickerTriggerIds.has(triggerId)) return;
+
+  seenStickerTriggerIds.add(triggerId);
+  seenStickerTriggerIdOrder.push(triggerId);
+
+  while (seenStickerTriggerIdOrder.length > maxSeenStickerTriggerIds) {
+    const oldestTriggerId = seenStickerTriggerIdOrder.shift();
+    if (oldestTriggerId !== undefined) {
+      seenStickerTriggerIds.delete(oldestTriggerId);
+    }
+  }
 }
 
 function stickerAssetFromUnknown(input) {
