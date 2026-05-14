@@ -5,15 +5,26 @@ const path = require("node:path");
 
 const { app, BrowserWindow, Menu, Tray, nativeImage } = electron;
 
-const overlaySize = { width: 210, height: 126, margin: 12 };
+const overlaySize = { width: 360, height: 220, margin: -4 };
 const pollMs = Number(process.env.OVERLAY_POLL_MS || "250");
 const rendererUrl = process.env.OVERLAY_RENDERER_URL || "http://127.0.0.1:5173";
 const daemonEventsUrl = process.env.OVERLAY_EVENTS_URL || "http://127.0.0.1:39877/events";
 const forceLastWarp = process.env.OVERLAY_FORCE_WARP === "1";
 const inputCounterEnabled = process.env.OVERLAY_INPUT_COUNTER === "1";
-const comboWindowMs = Number(process.env.OVERLAY_COMBO_WINDOW_MS || "2000");
+const initialComboWindowMs = Number(process.env.OVERLAY_COMBO_WINDOW_MS || "2000");
 const projectRoot = process.cwd();
 const statePath = path.join(projectRoot, "logs", "overlay-state.json");
+const comboStyles = [
+  { id: "arcade", label: "DNF Arcade" },
+  { id: "neon", label: "Neon Blade" },
+  { id: "gold", label: "Gold Burst" }
+];
+const comboWindowOptions = [
+  { label: "1.5 秒", value: 1500 },
+  { label: "2 秒", value: 2000 },
+  { label: "2.5 秒", value: 2500 },
+  { label: "3 秒", value: 3000 }
+];
 
 let overlayWindow;
 let tray;
@@ -24,6 +35,9 @@ let comboCount = 0;
 let lastInputAt = 0;
 let lastSentComboCount = undefined;
 let lastSentComboStartedAt = undefined;
+let lastSentComboWindowMs = undefined;
+let selectedComboStyle = "arcade";
+let comboWindowMs = initialComboWindowMs;
 
 app.setActivationPolicy("accessory");
 
@@ -51,8 +65,10 @@ app.whenReady().then(async () => {
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   await writeOverlayState({ visible: false, reason: "window_created_cjs" });
-  overlayWindow.loadURL(rendererUrl).catch((error) => {
-    writeOverlayState({ visible: false, reason: "renderer_load_error", error: messageOf(error) }).catch(() => {});
+  loadRendererWithRetry();
+  overlayWindow.webContents.on("did-finish-load", () => {
+    sendOverlaySettings().catch(() => {});
+    sendComboState(comboCount).catch(() => {});
   });
 
   setTimeout(() => {
@@ -65,6 +81,16 @@ app.whenReady().then(async () => {
     startInputActivityHelper();
   }
 });
+
+function loadRendererWithRetry(attempt = 1) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  overlayWindow.loadURL(rendererUrl).catch((error) => {
+    writeOverlayState({ visible: false, reason: "renderer_load_error", attempt, error: messageOf(error) }).catch(() => {});
+    if (attempt < 20) {
+      setTimeout(() => loadRendererWithRetry(attempt + 1), 250);
+    }
+  });
+}
 
 async function updateOverlay() {
   if (!overlayWindow || overlayWindow.isDestroyed() || isPolling) return;
@@ -87,7 +113,15 @@ async function updateOverlay() {
     overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     overlayWindow.showInactive();
     await sendComboState(comboCount, { ifChanged: true });
-    await writeOverlayState({ visible: true, active, overlay: bounds, comboCount, inputCounterEnabled });
+    await writeOverlayState({
+      visible: true,
+      active,
+      overlay: bounds,
+      comboCount,
+      inputCounterEnabled,
+      selectedComboStyle,
+      comboWindowMs
+    });
     if (process.env.OVERLAY_DEBUG === "1") {
       console.log(`[overlay] visible ${JSON.stringify({ active, overlay: bounds })}`);
     }
@@ -134,10 +168,46 @@ function createTray() {
   );
   icon.setTemplateImage(true);
   tray = new Tray(icon);
-  tray.setTitle("Combo");
+  tray.setTitle("⚡");
   tray.setToolTip("Warp Combo Overlay");
+  refreshTrayMenu();
+  tray.on("click", () => {
+    tray.popUpContextMenu();
+  });
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      {
+        label: "样式",
+        submenu: comboStyles.map((style) => ({
+          label: style.label,
+          type: "radio",
+          checked: selectedComboStyle === style.id,
+          click: () => {
+            selectedComboStyle = style.id;
+            refreshTrayMenu();
+            sendOverlaySettings().catch(() => {});
+          }
+        }))
+      },
+      {
+        label: "连击延续时间",
+        submenu: comboWindowOptions.map((option) => ({
+          label: option.label,
+          type: "radio",
+          checked: comboWindowMs === option.value,
+          click: () => {
+            comboWindowMs = option.value;
+            refreshTrayMenu();
+            sendOverlaySettings().catch(() => {});
+            sendComboState(valueAt(Date.now())).catch(() => {});
+          }
+        }))
+      },
+      { type: "separator" },
       {
         label: "退出",
         click: () => {
@@ -146,9 +216,6 @@ function createTray() {
       }
     ])
   );
-  tray.on("click", () => {
-    tray.popUpContextMenu();
-  });
 }
 
 function quitApp() {
@@ -174,13 +241,27 @@ function valueAt(now) {
 async function sendComboState(count, options = {}) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const startedAt = count > 0 ? lastInputAt : 0;
-  if (options.ifChanged && count === lastSentComboCount && startedAt === lastSentComboStartedAt) {
+  if (
+    options.ifChanged &&
+    count === lastSentComboCount &&
+    startedAt === lastSentComboStartedAt &&
+    comboWindowMs === lastSentComboWindowMs
+  ) {
     return;
   }
   lastSentComboCount = count;
   lastSentComboStartedAt = startedAt;
+  lastSentComboWindowMs = comboWindowMs;
   await overlayWindow.webContents.executeJavaScript(
     `window.dispatchEvent(new CustomEvent("combo-count", { detail: { count: ${Number(count) || 0}, startedAt: ${Number(startedAt) || 0}, comboWindowMs: ${comboWindowMs} } }))`
+  ).catch(() => {});
+}
+
+async function sendOverlaySettings() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const detail = JSON.stringify({ style: selectedComboStyle, comboWindowMs });
+  await overlayWindow.webContents.executeJavaScript(
+    `window.dispatchEvent(new CustomEvent("combo-settings", { detail: ${detail} }))`
   ).catch(() => {});
 }
 

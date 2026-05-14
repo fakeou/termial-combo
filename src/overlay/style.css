@@ -20,8 +20,6 @@ body {
   height: 100%;
   display: grid;
   place-items: center;
-  transition: opacity 80ms linear;
-  transform: skewX(-8deg);
   --panel-a: rgba(12, 33, 70, 0.94);
   --panel-b: rgba(10, 76, 151, 0.88);
   --panel-c: rgba(22, 161, 255, 0.78);
@@ -36,7 +34,41 @@ body {
 }
 
 .overlay-root.is-hidden {
-  opacity: 0;
+  opacity: 1;
+}
+
+.combo-stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 210px;
+  height: 126px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%) skewX(-8deg);
+  transition: opacity 80ms linear;
+}
+
+.sss-fireworks {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sss-aura {
+  position: absolute;
+  inset: 24px 42px;
+  z-index: 0;
+  border-radius: 999px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(255, 255, 230, 0.38), rgba(255, 207, 20, 0.18) 36%, rgba(255, 152, 0, 0) 72%);
+  filter: blur(2px);
+  animation: sss-aura-pulse 680ms ease-in-out infinite alternate;
 }
 
 .combo-card {
@@ -61,6 +93,104 @@ body {
     0 0 22px var(--glow),
     0 12px 28px rgba(0, 0, 0, 0.34);
   animation: combo-hit 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.combo-style-neon .combo-stage {
+  transform: translate(-50%, -50%) skewX(-13deg);
+}
+
+.combo-style-neon .combo-card {
+  min-width: 166px;
+  height: 64px;
+  gap: 10px;
+  clip-path: polygon(6% 0, 100% 0, 94% 38%, 100% 100%, 9% 100%, 0 58%);
+  background:
+    linear-gradient(95deg, rgba(0, 12, 24, 0.92), color-mix(in srgb, var(--panel-b) 72%, #00ffe0 28%) 54%, rgba(0, 255, 224, 0.22)),
+    repeating-linear-gradient(100deg, rgba(255,255,255,0.14) 0 1px, rgba(255,255,255,0) 1px 8px);
+  border-color: color-mix(in srgb, var(--rim) 64%, #00ffe0 36%);
+  box-shadow:
+    inset 0 0 18px rgba(0, 255, 224, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 0 28px color-mix(in srgb, var(--glow) 70%, #00ffe0 30%),
+    0 10px 22px rgba(0, 0, 0, 0.32);
+}
+
+.combo-style-neon .combo-number {
+  font-size: 54px;
+  -webkit-text-stroke: 1px rgba(3, 15, 32, 0.95);
+  text-shadow:
+    2px 2px 0 color-mix(in srgb, var(--number-shadow) 60%, #00ffe0 40%),
+    0 0 14px #00ffe0,
+    0 0 24px var(--glow);
+}
+
+.combo-style-neon .combo-label {
+  color: #e9ffff;
+  text-shadow: 1px 1px 0 #001929, 0 0 12px #00ffe0;
+}
+
+.combo-style-neon .rank-badge {
+  top: 88px;
+  height: 22px;
+  clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%);
+  background: linear-gradient(90deg, rgba(0, 12, 24, 0.9), color-mix(in srgb, var(--panel-b) 65%, #00ffe0 35%));
+}
+
+.combo-style-neon .speed-lines span {
+  height: 3px;
+  background: linear-gradient(90deg, rgba(0, 255, 224, 0), #ffffff, #00ffe0, rgba(0, 255, 224, 0));
+}
+
+.combo-style-gold .combo-stage {
+  transform: translate(-50%, -50%) skewX(-6deg);
+}
+
+.combo-style-gold .combo-card {
+  min-width: 174px;
+  height: 78px;
+  clip-path: polygon(10% 0, 94% 0, 100% 50%, 90% 100%, 4% 100%, 0 42%);
+  background:
+    radial-gradient(circle at 22% 22%, rgba(255, 255, 242, 0.86), rgba(255, 255, 242, 0) 28%),
+    linear-gradient(95deg, rgba(80, 38, 0, 0.96), color-mix(in srgb, var(--panel-b) 72%, #ffe866 28%) 48%, rgba(255, 238, 118, 0.92));
+  border-color: rgba(255, 251, 203, 0.98);
+  box-shadow:
+    inset 0 0 16px rgba(255, 255, 255, 0.26),
+    0 0 0 3px rgba(93, 35, 0, 0.88),
+    0 0 34px rgba(255, 210, 42, 0.72),
+    0 14px 28px rgba(0, 0, 0, 0.36);
+}
+
+.combo-style-gold .combo-number {
+  font-size: 60px;
+  color: #fffbe5;
+  -webkit-text-stroke: 2px #4f1900;
+  text-shadow:
+    3px 3px 0 #a24f00,
+    0 0 10px #fff6a8,
+    0 0 28px #ffb800;
+}
+
+.combo-style-gold .combo-label {
+  color: #fff1a0;
+  text-shadow: 2px 2px 0 #7b2500, 0 0 10px #fff2a8;
+}
+
+.combo-style-gold .rank-badge {
+  top: 90px;
+  height: 26px;
+  min-width: 84px;
+  background: linear-gradient(90deg, rgba(58, 22, 0, 0.9), rgba(255, 181, 0, 0.92), rgba(77, 28, 0, 0.88));
+  box-shadow: 0 0 20px rgba(255, 214, 64, 0.82), 0 8px 18px rgba(0, 0, 0, 0.34);
+}
+
+.combo-style-gold .impact-flash {
+  width: 164px;
+  height: 88px;
+}
+
+.combo-style-gold .combo-sparks span {
+  width: 22px;
+  height: 5px;
 }
 
 .combo-number {
@@ -128,14 +258,14 @@ body {
 .combo-sparks span {
   --angle: calc(var(--i) * 36deg);
   position: absolute;
-  top: 48px;
-  left: 94px;
+  top: 50%;
+  left: 50%;
   width: 18px;
   height: 4px;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--spark-a), var(--spark-b));
   box-shadow: 0 0 12px var(--glow);
-  transform: rotate(var(--angle)) translateX(20px);
+  transform: translate(-50%, -50%) rotate(var(--angle)) translateX(36px);
   animation: combo-spark 380ms ease-out both;
 }
 
@@ -148,8 +278,8 @@ body {
 
 .speed-lines span {
   position: absolute;
-  right: calc(20px + var(--i) * 8px);
-  top: calc(17px + var(--i) * 9px);
+  left: calc(50% + 42px + var(--i) * 8px);
+  top: calc(50% - 34px + var(--i) * 11px);
   width: calc(46px - var(--i) * 3px);
   height: 5px;
   border-radius: 999px;
@@ -161,7 +291,7 @@ body {
 .rank-badge {
   position: absolute;
   z-index: 4;
-  top: 76px;
+  top: 88px;
   left: 50%;
   min-width: 76px;
   height: 24px;
@@ -185,6 +315,20 @@ body {
   color: var(--text-accent);
   -webkit-text-stroke: 1px #230300;
   text-shadow: 2px 2px 0 var(--number-shadow), 0 0 10px var(--flash);
+}
+
+.theme-ash {
+  --panel-a: rgba(30, 34, 40, 0.94);
+  --panel-b: rgba(82, 89, 100, 0.88);
+  --panel-c: rgba(152, 162, 174, 0.72);
+  --glow: rgba(174, 190, 204, 0.42);
+  --rim: rgba(221, 229, 236, 0.74);
+  --flash: rgba(241, 246, 250, 0.78);
+  --spark-a: #f4f7fa;
+  --spark-b: #9aa6b2;
+  --number-shadow: #3e4650;
+  --text-main: #f6f8fa;
+  --text-accent: #d4dce4;
 }
 
 .theme-violet {
@@ -213,6 +357,20 @@ body {
   --number-shadow: #9c0016;
   --text-main: #fff8f3;
   --text-accent: #ffb5bf;
+}
+
+.theme-emerald {
+  --panel-a: rgba(2, 52, 46, 0.94);
+  --panel-b: rgba(0, 135, 112, 0.9);
+  --panel-c: rgba(48, 255, 194, 0.82);
+  --glow: rgba(34, 255, 196, 0.72);
+  --rim: rgba(177, 255, 230, 0.94);
+  --flash: rgba(220, 255, 245, 0.96);
+  --spark-a: #effff9;
+  --spark-b: #22ffc4;
+  --number-shadow: #00695b;
+  --text-main: #f5fffb;
+  --text-accent: #a8ffe5;
 }
 
 .theme-inferno {
@@ -275,11 +433,11 @@ body {
 @keyframes combo-spark {
   0% {
     opacity: 1;
-    transform: rotate(var(--angle)) translateX(18px) scale(1);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(28px) scale(1);
   }
   100% {
     opacity: 0;
-    transform: rotate(var(--angle)) translateX(56px) scale(0.42);
+    transform: translate(-50%, -50%) rotate(var(--angle)) translateX(78px) scale(0.42);
   }
 }
 
@@ -305,5 +463,16 @@ body {
   100% {
     opacity: 1;
     transform: translateX(-50%) translateY(0) skewX(-8deg) scale(1);
+  }
+}
+
+@keyframes sss-aura-pulse {
+  0% {
+    opacity: 0.34;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0.85;
+    transform: scale(1.06);
   }
 }
