@@ -3,6 +3,7 @@ export const eventTypes = [
   "ai_response_finished",
   "ai_task_started",
   "ai_task_finished",
+  "sticker_triggered",
   "active_app_changed",
   "active_window_changed",
   "warp_window_detected",
