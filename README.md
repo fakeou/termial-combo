@@ -195,7 +195,7 @@ GIF 示例：
       "keywords": ["爆炸", "炸了"],
       "asset": {
         "type": "gif",
-        "value": "assets/stickers/boom.gif"
+        "path": "assets/stickers/boom.gif"
       },
       "durationMs": 3000
     }
