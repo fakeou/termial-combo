@@ -85,7 +85,7 @@ describe("sticker rules", () => {
   it("creates sticker trigger events for matching prompt rules", () => {
     const event: ContextEvent = {
       type: "ai_prompt_submitted",
-      source: "claude-hook",
+      source: "claude-code",
       timestamp: "2026-05-14T01:02:03.000Z",
       cwd: "/repo",
       sessionId: "session-1",
@@ -135,9 +135,20 @@ describe("sticker rules", () => {
   it("does not create triggers for non-prompt events", () => {
     const event: ContextEvent = {
       type: "ai_response_finished",
-      source: "claude-hook",
+      source: "claude-code",
       timestamp: "2026-05-14T01:02:03.000Z",
       text: "不对"
+    };
+
+    expect(buildStickerTriggerEvents(event, [defaultStickerRule])).toEqual([]);
+  });
+
+  it("does not create triggers for prompt events from unsupported sources", () => {
+    const event: ContextEvent = {
+      type: "ai_prompt_submitted",
+      source: "curl",
+      timestamp: "2026-05-14T01:02:03.000Z",
+      text: "这里不对"
     };
 
     expect(buildStickerTriggerEvents(event, [defaultStickerRule])).toEqual([]);

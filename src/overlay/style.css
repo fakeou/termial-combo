@@ -53,7 +53,9 @@ body {
 .sticker-stage {
   position: absolute;
   left: 50%;
-  top: calc(50% + 98px);
+  top: calc(50% + 66px);
+  width: 128px;
+  height: 92px;
   z-index: 1;
   display: grid;
   place-items: center;

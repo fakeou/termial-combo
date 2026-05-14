@@ -17,6 +17,8 @@ export interface StickerRule {
   durationMs: number;
 }
 
+const stickerPromptSources = new Set(["claude-code", "codex-cli", "codex-cli-log"]);
+
 export const defaultStickerRule: StickerRule = {
   id: "retry-emoji",
   keywords: ["不对", "不行", "重新来"],
@@ -57,7 +59,7 @@ export function buildStickerTriggerEvents(
   event: ContextEvent,
   rules: StickerRule[]
 ): Omit<ContextEvent, "timestamp">[] {
-  if (event.type !== "ai_prompt_submitted" || typeof event.text !== "string") {
+  if (event.type !== "ai_prompt_submitted" || typeof event.text !== "string" || !stickerPromptSources.has(event.source)) {
     return [];
   }
 

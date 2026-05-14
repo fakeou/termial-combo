@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const { app, BrowserWindow, Menu, Tray, nativeImage } = electron;
 
-const overlaySize = { width: 360, height: 220, margin: -4 };
+const overlaySize = { width: 360, height: 320, margin: -4 };
 const pollMs = Number(process.env.OVERLAY_POLL_MS || "250");
 const rendererUrl = process.env.OVERLAY_RENDERER_URL || "http://127.0.0.1:5173";
 const daemonEventsUrl = process.env.OVERLAY_EVENTS_URL || "http://127.0.0.1:39877/events";

@@ -30,7 +30,7 @@ describe("HTTP sticker rule derivation", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "ai_prompt_submitted",
-        source: "test-hook",
+        source: "codex-cli",
         text: "这里不对，请重新来",
         cwd: "/repo",
         sessionId: "session-1",
@@ -43,7 +43,7 @@ describe("HTTP sticker rule derivation", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
       type: "ai_prompt_submitted",
-      source: "test-hook",
+      source: "codex-cli",
       text: "这里不对，请重新来"
     });
     expect(events[1]).toMatchObject({
@@ -80,6 +80,26 @@ describe("HTTP sticker rule derivation", () => {
     expect(response.status).toBe(202);
     expect(store.recent()).toHaveLength(1);
     expect(store.recent()[0]).toMatchObject({ type: "ai_response_finished", text: "这里不对" });
+  });
+
+  it("does not derive sticker trigger events for prompts from unsupported sources", async () => {
+    const { endpoint, store } = await startTestServer({
+      stickerRules: {
+        load: async () => [
+          { id: "retry", keywords: ["不对"], asset: { type: "emoji", value: "😵" }, durationMs: 2000 }
+        ]
+      }
+    });
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ai_prompt_submitted", source: "curl", text: "这里不对" })
+    });
+
+    expect(response.status).toBe(202);
+    expect(store.recent()).toHaveLength(1);
+    expect(store.recent()[0]).toMatchObject({ type: "ai_prompt_submitted", source: "curl", text: "这里不对" });
   });
 });
 
