@@ -11,6 +11,9 @@ export interface ServerOptions {
     load: () => Promise<StickerRule[]>;
     onError?: (error: unknown) => void | Promise<void>;
   };
+  codexScan?: {
+    scan: () => Promise<void>;
+  };
 }
 
 export function createEventServer(options: ServerOptions): http.Server {
@@ -35,6 +38,11 @@ export function createEventServer(options: ServerOptions): http.Server {
         console.log(JSON.stringify(event));
         await storeStickerTriggerEvents(event, store, stickerRules);
         return sendJson(res, 202, { ok: true, event });
+      }
+
+      if (req.method === "POST" && url.pathname === "/codex/scan" && options.codexScan) {
+        await options.codexScan.scan();
+        return sendJson(res, 202, { ok: true });
       }
 
       return sendJson(res, 404, { ok: false, error: "Not found" });

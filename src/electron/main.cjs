@@ -9,8 +9,10 @@ const overlaySize = { width: 360, height: 320, margin: -4 };
 const pollMs = Number(process.env.OVERLAY_POLL_MS || "100");
 const rendererUrl = process.env.OVERLAY_RENDERER_URL || "http://127.0.0.1:5173";
 const daemonEventsUrl = process.env.OVERLAY_EVENTS_URL || "http://127.0.0.1:39877/events";
+const daemonCodexScanUrl = process.env.OVERLAY_CODEX_SCAN_URL || codexScanUrlFromEventsUrl(daemonEventsUrl);
 const forceLastWarp = process.env.OVERLAY_FORCE_WARP === "1";
 const inputCounterEnabled = process.env.OVERLAY_INPUT_COUNTER === "1";
+const codexScanOnEnterEnabled = process.env.OVERLAY_CODEX_SCAN_ON_ENTER !== "0";
 const initialComboWindowMs = Number(process.env.OVERLAY_COMBO_WINDOW_MS || "2000");
 const projectRoot = process.cwd();
 const statePath = path.join(projectRoot, "logs", "overlay-state.json");
@@ -38,6 +40,7 @@ let lastSentComboStartedAt = undefined;
 let lastSentComboWindowMs = undefined;
 let selectedComboStyle = "arcade";
 let comboWindowMs = initialComboWindowMs;
+let lastCodexScanErrorAt = 0;
 const seenStickerTriggerIds = new Set();
 const seenStickerTriggerIdOrder = [];
 const maxSeenStickerTriggerIds = 500;
@@ -45,7 +48,7 @@ const maxSeenStickerTriggerIds = 500;
 app.setActivationPolicy("accessory");
 
 app.whenReady().then(async () => {
-  await writeOverlayState({ visible: false, reason: "app_ready_cjs", inputCounterEnabled });
+  await writeOverlayState({ visible: false, reason: "app_ready_cjs", inputCounterEnabled, codexScanOnEnterEnabled });
   createTray();
 
   overlayWindow = new BrowserWindow({
@@ -80,7 +83,7 @@ app.whenReady().then(async () => {
   setInterval(() => {
     updateOverlay().catch(() => {});
   }, pollMs);
-  if (inputCounterEnabled) {
+  if (inputCounterEnabled || codexScanOnEnterEnabled) {
     startInputActivityHelper();
   }
 });
@@ -124,6 +127,7 @@ async function updateOverlay() {
       overlay: bounds,
       comboCount,
       inputCounterEnabled,
+      codexScanOnEnterEnabled,
       selectedComboStyle,
       comboWindowMs
     });
@@ -150,8 +154,12 @@ function startInputActivityHelper() {
   inputHelper.stdout.setEncoding("utf8");
   inputHelper.stdout.on("data", (chunk) => {
     for (const line of String(chunk).split(/\r?\n/)) {
-      if (line.trim() === "commit") {
+      const inputEvent = line.trim();
+      if ((inputEvent === "commit" || inputEvent === "enter") && inputCounterEnabled) {
         recordInputActivity().catch(() => {});
+      }
+      if (inputEvent === "enter") {
+        triggerCodexScanOnEnter().catch(() => {});
       }
     }
   });
@@ -236,6 +244,27 @@ async function recordInputActivity() {
   comboCount = valueAt(now) + 1;
   lastInputAt = now;
   await sendComboState(comboCount);
+}
+
+async function triggerCodexScanOnEnter() {
+  if (!codexScanOnEnterEnabled || !currentWarpActive) return;
+
+  try {
+    const response = await fetch(daemonCodexScanUrl, { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+  } catch (error) {
+    const now = Date.now();
+    if (now - lastCodexScanErrorAt <= 10_000) return;
+    lastCodexScanErrorAt = now;
+    await writeOverlayState({
+      visible: Boolean(currentWarpActive),
+      reason: "codex_scan_on_enter_error",
+      error: messageOf(error),
+      daemonCodexScanUrl
+    });
+  }
 }
 
 function valueAt(now) {
@@ -403,6 +432,18 @@ function computeOverlayBounds(windowBounds, options) {
     width: options.width,
     height: options.height
   };
+}
+
+function codexScanUrlFromEventsUrl(eventsUrl) {
+  try {
+    const url = new URL(eventsUrl);
+    url.pathname = "/codex/scan";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "http://127.0.0.1:39877/codex/scan";
+  }
 }
 
 async function writeOverlayState(state) {

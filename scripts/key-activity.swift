@@ -3,6 +3,10 @@ import Carbon
 import Foundation
 
 let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+let enterKeyCodes = Set<Int64>([
+  36, // Return
+  76 // Keypad Enter
+])
 let commitKeyCodes = Set<Int64>([
   36, // Return
   76, // Keypad Enter
@@ -16,7 +20,10 @@ guard let eventTap = CGEvent.tapCreate(
   options: .listenOnly,
   eventsOfInterest: mask,
   callback: { _, _, event, _ in
-    if shouldCount(event: event) {
+    if isEnter(event: event) {
+      print("enter")
+      fflush(stdout)
+    } else if shouldCount(event: event) {
       print("commit")
       fflush(stdout)
     }
@@ -32,6 +39,10 @@ let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap,
 CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
 CGEvent.tapEnable(tap: eventTap, enable: true)
 CFRunLoopRun()
+
+func isEnter(event: CGEvent) -> Bool {
+  enterKeyCodes.contains(event.getIntegerValueField(.keyboardEventKeycode))
+}
 
 func shouldCount(event: CGEvent) -> Bool {
   if isLikelyInputMethodActive() {

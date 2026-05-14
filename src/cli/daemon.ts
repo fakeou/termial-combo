@@ -23,39 +23,14 @@ const codexHistoryPath = process.env.CODEX_HISTORY_PATH
 const codexHistoryPollMs = Number(process.env.CODEX_HISTORY_POLL_MS ?? "100");
 
 const store = new JsonlEventStore({ logPath, recentLimit });
-const server = createEventServer({
-  store,
-  stickerRules: {
-    load: () => loadStickerRules({ configPath: stickerRulesPath, projectRoot: process.cwd() }),
-    onError: async (error) => {
-      await store.add({
-        type: "hook_error",
-        source: "sticker-rules",
-        text: error instanceof Error ? error.message : String(error),
-        metadata: {
-          phase: "sticker_rules_load",
-          configPath: stickerRulesPath
-        }
-      });
-    }
-  }
-});
-
-await listen(server, port, host);
-console.log(`[warp-ai-context] daemon listening on http://${host}:${port}`);
-console.log(`[warp-ai-context] writing events to ${logPath}`);
-console.log(`[warp-ai-context] loading sticker rules from ${stickerRulesPath}`);
-if (codexHistoryTailEnabled) {
-  console.log(`[warp-ai-context] tailing Codex history from ${codexHistoryPath}`);
-}
-
 let previous: ActiveWindowInfo | undefined;
 let isPollingWindow = false;
 let lastWindowErrorAt = 0;
 let lastCodexHistoryErrorAt = 0;
+let codexHistoryTailer: CodexHistoryTailer | undefined;
 
 if (codexHistoryTailEnabled) {
-  const codexHistoryTailer = new CodexHistoryTailer({
+  codexHistoryTailer = new CodexHistoryTailer({
     historyPath: codexHistoryPath,
     pollMs: codexHistoryPollMs,
     onEvent: async (event) => {
@@ -77,7 +52,43 @@ if (codexHistoryTailEnabled) {
       });
     }
   });
+}
+
+const server = createEventServer({
+  store,
+  stickerRules: {
+    load: () => loadStickerRules({ configPath: stickerRulesPath, projectRoot: process.cwd() }),
+    onError: async (error) => {
+      await store.add({
+        type: "hook_error",
+        source: "sticker-rules",
+        text: error instanceof Error ? error.message : String(error),
+        metadata: {
+          phase: "sticker_rules_load",
+          configPath: stickerRulesPath
+        }
+      });
+    }
+  },
+  codexScan: codexHistoryTailer
+    ? {
+        scan: async () => {
+          await codexHistoryTailer?.pollOnce();
+        }
+      }
+    : undefined
+});
+
+if (codexHistoryTailer) {
   await codexHistoryTailer.start();
+}
+
+await listen(server, port, host);
+console.log(`[warp-ai-context] daemon listening on http://${host}:${port}`);
+console.log(`[warp-ai-context] writing events to ${logPath}`);
+console.log(`[warp-ai-context] loading sticker rules from ${stickerRulesPath}`);
+if (codexHistoryTailEnabled) {
+  console.log(`[warp-ai-context] tailing Codex history from ${codexHistoryPath}`);
 }
 
 setInterval(async () => {

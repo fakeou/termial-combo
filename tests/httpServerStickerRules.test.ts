@@ -103,6 +103,25 @@ describe("HTTP sticker rule derivation", () => {
   });
 });
 
+describe("HTTP Codex scan trigger", () => {
+  it("runs the configured Codex scan handler on demand", async () => {
+    let scanCount = 0;
+    const { baseUrl } = await startTestServer({
+      codexScan: {
+        scan: async () => {
+          scanCount += 1;
+        }
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/codex/scan`, { method: "POST" });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+    expect(scanCount).toBe(1);
+  });
+});
+
 async function startTestServer(options: Omit<Parameters<typeof createEventServer>[0], "store">) {
   const dir = await mkdtemp(join(tmpdir(), "http-sticker-rules-"));
   tempDirs.push(dir);
@@ -112,7 +131,8 @@ async function startTestServer(options: Omit<Parameters<typeof createEventServer
 
   await listen(server, 0, "127.0.0.1");
   const address = server.address() as AddressInfo;
-  return { endpoint: `http://127.0.0.1:${address.port}/events`, store };
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  return { baseUrl, endpoint: `${baseUrl}/events`, store };
 }
 
 async function closeServer(server: ReturnType<typeof createEventServer>): Promise<void> {

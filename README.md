@@ -158,6 +158,14 @@ Codex 监听不依赖 hook。daemon 启动时会从 `history.jsonl` 文件末尾
 ```bash
 CODEX_HISTORY_PATH=/path/to/history.jsonl pnpm daemon
 CODEX_HISTORY_TAIL=0 pnpm daemon
+CODEX_HISTORY_POLL_MS=50 pnpm daemon
+```
+
+overlay 默认会在 Warp 前台按 Return / Keypad Enter 时请求 daemon 立即检查一次 Codex history，用来降低贴纸触发延迟。这个行为需要启动 overlay 的进程拥有 macOS Input Monitoring / Accessibility 权限；如果权限不可用，daemon 的轮询仍会兜底。
+
+```bash
+OVERLAY_CODEX_SCAN_ON_ENTER=0 pnpm overlay
+OVERLAY_CODEX_SCAN_URL=http://127.0.0.1:39877/codex/scan pnpm overlay
 ```
 
 默认配置路径：
