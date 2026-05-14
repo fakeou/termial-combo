@@ -38,6 +38,7 @@ let lastSentComboStartedAt = undefined;
 let lastSentComboWindowMs = undefined;
 let selectedComboStyle = "arcade";
 let comboWindowMs = initialComboWindowMs;
+const seenStickerTriggerIds = new Set();
 
 app.setActivationPolicy("accessory");
 
@@ -96,7 +97,9 @@ async function updateOverlay() {
   if (!overlayWindow || overlayWindow.isDestroyed() || isPolling) return;
   isPolling = true;
   try {
-    const active = await getWarpWindowFromDaemon(forceLastWarp);
+    const events = await getRecentDaemonEvents();
+    await forwardStickerCommands(events);
+    const active = getWarpWindowFromEvents(events, forceLastWarp);
     if (!active || !active.bounds || !isWarpWindow(active)) {
       overlayWindow.hide();
       currentWarpActive = false;
@@ -265,27 +268,112 @@ async function sendOverlaySettings() {
   ).catch(() => {});
 }
 
-async function getWarpWindowFromDaemon(useLastWarp) {
+async function getRecentDaemonEvents() {
   try {
     const response = await fetch(daemonEventsUrl);
-    if (!response.ok) return undefined;
+    if (!response.ok) return [];
     const payload = await response.json();
-    const latest = [...(payload.events || [])]
-      .reverse()
-      .find((event) => event.type === "warp_window_detected" || (!useLastWarp && event.type === "active_app_changed"));
-    if (!latest || latest.type !== "warp_window_detected") return undefined;
-    const metadata = latest.metadata || {};
-    if (!metadata.bounds || typeof metadata.bounds !== "object") return undefined;
-    return {
-      appName: String(metadata.appName || "Warp"),
-      bundleId: typeof metadata.bundleId === "string" ? metadata.bundleId : undefined,
-      pid: typeof metadata.pid === "number" ? metadata.pid : undefined,
-      title: typeof metadata.title === "string" ? metadata.title : undefined,
-      bounds: metadata.bounds
-    };
+    return Array.isArray(payload.events) ? payload.events : [];
   } catch {
-    return undefined;
+    return [];
   }
+}
+
+function getWarpWindowFromEvents(events, useLastWarp) {
+  const latest = [...events]
+    .reverse()
+    .find((event) => event.type === "warp_window_detected" || (!useLastWarp && event.type === "active_app_changed"));
+  if (!latest || latest.type !== "warp_window_detected") return undefined;
+  const metadata = latest.metadata || {};
+  if (!metadata.bounds || typeof metadata.bounds !== "object") return undefined;
+  return {
+    appName: String(metadata.appName || "Warp"),
+    bundleId: typeof metadata.bundleId === "string" ? metadata.bundleId : undefined,
+    pid: typeof metadata.pid === "number" ? metadata.pid : undefined,
+    title: typeof metadata.title === "string" ? metadata.title : undefined,
+    bounds: metadata.bounds
+  };
+}
+
+async function forwardStickerCommands(events) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const commands = extractNewStickerCommands(events);
+  for (const command of commands) {
+    const detail = JSON.stringify(command);
+    await overlayWindow.webContents.executeJavaScript(
+      `window.dispatchEvent(new CustomEvent("sticker-trigger", { detail: ${detail} }))`
+    ).catch(() => {});
+  }
+}
+
+function extractNewStickerCommands(events) {
+  const commands = [];
+
+  for (const event of events) {
+    const command = stickerCommandFromEvent(event);
+    if (command) commands.push(command);
+  }
+
+  return commands;
+}
+
+function stickerCommandFromEvent(event) {
+  if (!event || event.type !== "sticker_triggered" || !isRecord(event.metadata)) return undefined;
+
+  const triggerId = stringValue(event.metadata.triggerId);
+  if (!triggerId || seenStickerTriggerIds.has(triggerId)) return undefined;
+
+  const asset = stickerAssetFromUnknown(event.metadata.asset);
+  if (!asset) return undefined;
+
+  seenStickerTriggerIds.add(triggerId);
+  const command = {
+    triggerId,
+    asset,
+    durationMs: clampStickerDuration(event.metadata.durationMs)
+  };
+
+  const matchedKeyword = stringValue(event.metadata.matchedKeyword);
+  if (matchedKeyword) command.matchedKeyword = matchedKeyword;
+
+  const ruleId = stringValue(event.metadata.ruleId);
+  if (ruleId) command.ruleId = ruleId;
+
+  return command;
+}
+
+function stickerAssetFromUnknown(input) {
+  if (!isRecord(input) || typeof input.type !== "string") return undefined;
+
+  if (input.type === "emoji") {
+    const emojiValue = stringValue(input.value);
+    return emojiValue ? { type: "emoji", value: emojiValue } : undefined;
+  }
+
+  if (!isUrlStickerAssetType(input.type)) return undefined;
+
+  const url = stringValue(input.url);
+  return url ? { type: input.type, url } : undefined;
+}
+
+function clampStickerDuration(value) {
+  const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 2000;
+  return Math.min(5000, Math.max(1, duration));
+}
+
+function stringValue(value) {
+  if (typeof value !== "string") return undefined;
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function isUrlStickerAssetType(value) {
+  return value === "image" || value === "gif" || value === "video";
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWarpWindow(info) {
