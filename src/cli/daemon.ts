@@ -10,7 +10,9 @@ const port = Number(process.env.PORT ?? "39877");
 const logPath = process.env.EVENT_LOG_PATH ?? join(process.cwd(), "logs", "events.jsonl");
 const recentLimit = Number(process.env.RECENT_EVENT_LIMIT ?? "100");
 const pollMs = Number(process.env.WINDOW_POLL_MS ?? "1000");
-const stickerRulesPath = process.env.STICKER_RULES_PATH ?? resolve(process.cwd(), "config", "sticker-rules.json");
+const stickerRulesPath = process.env.STICKER_RULES_PATH
+  ? resolve(process.env.STICKER_RULES_PATH)
+  : resolve(process.cwd(), "config", "sticker-rules.json");
 
 const store = new JsonlEventStore({ logPath, recentLimit });
 const server = createEventServer({
