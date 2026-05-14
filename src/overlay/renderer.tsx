@@ -16,11 +16,13 @@ type StickerAsset =
   | { type: "video"; url: string };
 
 interface StickerDisplay {
+  triggerId: string;
   asset: StickerAsset;
   durationMs: number;
 }
 
 interface StickerTriggerDetail {
+  triggerId: string;
   asset: StickerAsset;
   durationMs?: number;
 }
@@ -86,7 +88,7 @@ function OverlayBadge(): React.ReactElement {
 
       clearStickerTimeout();
       const durationMs = clampStickerDuration(detail.durationMs);
-      setSticker({ asset: detail.asset, durationMs });
+      setSticker({ triggerId: detail.triggerId, asset: detail.asset, durationMs });
       stickerTimeoutRef.current = window.setTimeout(() => {
         stickerTimeoutRef.current = undefined;
         setSticker(undefined);
@@ -173,7 +175,7 @@ function OverlayBadge(): React.ReactElement {
         </section>
       )}
       {sticker ? (
-        <section className="sticker-stage" aria-hidden="true">
+        <section className="sticker-stage" key={sticker.triggerId} aria-hidden="true">
           {sticker.asset.type === "emoji" ? (
             <span className="sticker-emoji">{sticker.asset.value}</span>
           ) : sticker.asset.type === "video" ? (
@@ -275,6 +277,7 @@ function randomBetween(min: number, max: number): number {
 
 function isStickerTriggerDetail(value: unknown): value is StickerTriggerDetail {
   if (!isRecord(value)) return false;
+  if (typeof value.triggerId !== "string" || value.triggerId.trim().length === 0) return false;
   if (!isStickerAsset(value.asset)) return false;
   return value.durationMs === undefined || isDurationMs(value.durationMs);
 }
