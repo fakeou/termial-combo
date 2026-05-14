@@ -20,7 +20,7 @@ const codexHistoryTailEnabled = process.env.CODEX_HISTORY_TAIL !== "0";
 const codexHistoryPath = process.env.CODEX_HISTORY_PATH
   ? resolve(process.env.CODEX_HISTORY_PATH)
   : join(homedir(), ".codex", "history.jsonl");
-const codexHistoryPollMs = Number(process.env.CODEX_HISTORY_POLL_MS ?? "1000");
+const codexHistoryPollMs = Number(process.env.CODEX_HISTORY_POLL_MS ?? "100");
 
 const store = new JsonlEventStore({ logPath, recentLimit });
 const server = createEventServer({

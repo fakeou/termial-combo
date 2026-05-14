@@ -111,5 +111,4 @@ describe("CodexHistoryTailer", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: "ai_prompt_submitted", source: "codex-cli", text: "不对" });
   });
-}
-);
+});
