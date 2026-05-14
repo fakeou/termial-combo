@@ -9,12 +9,30 @@ const defaultComboWindowMs = 2000;
 const defaultComboStyle = "arcade";
 const sssThreshold = 50;
 
+type StickerAsset =
+  | { type: "emoji"; value: string }
+  | { type: "image"; url: string }
+  | { type: "gif"; url: string }
+  | { type: "video"; url: string };
+
+interface StickerDisplay {
+  asset: StickerAsset;
+  durationMs: number;
+}
+
+interface StickerTriggerDetail {
+  asset: StickerAsset;
+  durationMs?: number;
+}
+
 function OverlayBadge(): React.ReactElement {
   const fireworkCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const stickerTimeoutRef = React.useRef<number | undefined>(undefined);
   const previousCountRef = React.useRef(0);
   const sssArmedRef = React.useRef(true);
   const [fireworksActive, setFireworksActive] = React.useState(false);
   const [comboStyle, setComboStyle] = React.useState(defaultComboStyle);
+  const [sticker, setSticker] = React.useState<StickerDisplay | undefined>(undefined);
   const [combo, setCombo] = React.useState({
     count: 0,
     startedAt: 0,
@@ -53,6 +71,33 @@ function OverlayBadge(): React.ReactElement {
     };
     window.addEventListener("combo-settings", listener);
     return () => window.removeEventListener("combo-settings", listener);
+  }, []);
+
+  React.useEffect(() => {
+    const clearStickerTimeout = () => {
+      if (stickerTimeoutRef.current === undefined) return;
+      window.clearTimeout(stickerTimeoutRef.current);
+      stickerTimeoutRef.current = undefined;
+    };
+
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!isStickerTriggerDetail(detail)) return;
+
+      clearStickerTimeout();
+      const durationMs = clampStickerDuration(detail.durationMs);
+      setSticker({ asset: detail.asset, durationMs });
+      stickerTimeoutRef.current = window.setTimeout(() => {
+        stickerTimeoutRef.current = undefined;
+        setSticker(undefined);
+      }, durationMs);
+    };
+
+    window.addEventListener("sticker-trigger", listener);
+    return () => {
+      window.removeEventListener("sticker-trigger", listener);
+      clearStickerTimeout();
+    };
   }, []);
 
   React.useEffect(() => {
@@ -127,6 +172,42 @@ function OverlayBadge(): React.ReactElement {
           </div>
         </section>
       )}
+      {sticker ? (
+        <section className="sticker-stage" aria-hidden="true">
+          {sticker.asset.type === "emoji" ? (
+            <span className="sticker-emoji">{sticker.asset.value}</span>
+          ) : sticker.asset.type === "video" ? (
+            <video
+              className="sticker-media"
+              src={sticker.asset.url}
+              muted
+              autoPlay
+              loop
+              playsInline
+              onError={() => {
+                if (stickerTimeoutRef.current !== undefined) {
+                  window.clearTimeout(stickerTimeoutRef.current);
+                  stickerTimeoutRef.current = undefined;
+                }
+                setSticker(undefined);
+              }}
+            />
+          ) : (
+            <img
+              className="sticker-media"
+              src={sticker.asset.url}
+              alt=""
+              onError={() => {
+                if (stickerTimeoutRef.current !== undefined) {
+                  window.clearTimeout(stickerTimeoutRef.current);
+                  stickerTimeoutRef.current = undefined;
+                }
+                setSticker(undefined);
+              }}
+            />
+          )}
+        </section>
+      ) : null}
       {fireworksActive && <div className="sss-aura" />}
     </main>
   );
@@ -190,6 +271,40 @@ function launchSssFireworks(canvas: HTMLCanvasElement | null, onDone: () => void
 
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min);
+}
+
+function isStickerTriggerDetail(value: unknown): value is StickerTriggerDetail {
+  if (!isRecord(value)) return false;
+  if (!isStickerAsset(value.asset)) return false;
+  return value.durationMs === undefined || isDurationMs(value.durationMs);
+}
+
+function isStickerAsset(value: unknown): value is StickerAsset {
+  if (!isRecord(value) || typeof value.type !== "string") return false;
+
+  if (value.type === "emoji") {
+    return typeof value.value === "string" && value.value.trim().length > 0;
+  }
+
+  if (!isUrlStickerAssetType(value.type)) return false;
+  return typeof value.url === "string" && value.url.trim().length > 0;
+}
+
+function clampStickerDuration(value: unknown): number {
+  const duration = isDurationMs(value) ? Math.trunc(value) : 2000;
+  return Math.min(5000, Math.max(1, duration));
+}
+
+function isDurationMs(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isUrlStickerAssetType(value: string): value is "image" | "gif" | "video" {
+  return value === "image" || value === "gif" || value === "video";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 createRoot(document.getElementById("root")!).render(<OverlayBadge />);

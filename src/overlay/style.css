@@ -50,6 +50,37 @@ body {
   transition: opacity 80ms linear;
 }
 
+.sticker-stage {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 98px);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.sticker-emoji {
+  display: inline-block;
+  font-size: 54px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.42));
+  animation: sticker-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sticker-media {
+  display: block;
+  max-width: 128px;
+  max-height: 92px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.42));
+  animation: sticker-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .sss-fireworks {
   position: absolute;
   inset: 0;
@@ -474,5 +505,16 @@ body {
   100% {
     opacity: 0.85;
     transform: scale(1.06);
+  }
+}
+
+@keyframes sticker-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
