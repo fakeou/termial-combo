@@ -147,6 +147,62 @@ Codex session JSONL 扫描：
 pnpm codex:scan /path/to/session.jsonl
 ```
 
+## Prompt Sticker Rules
+
+daemon 会监听 Claude Code / Codex CLI hook 发送的用户 prompt。命中规则后，会在 combo 下方临时显示 emoji、图片、GIF 或 MP4 贴纸。
+
+默认配置路径：
+
+```text
+config/sticker-rules.json
+```
+
+可以用环境变量覆盖：
+
+```bash
+STICKER_RULES_PATH=/path/to/rules.json pnpm daemon
+```
+
+规则会匹配中文关键词。`durationMs` 最长为 `5000`，超过会被 clamp 到 `5000`。
+
+retry emoji 示例：
+
+```json
+{
+  "rules": [
+    {
+      "id": "retry-emoji",
+      "enabled": true,
+      "keywords": ["不对", "不行", "重新来"],
+      "asset": {
+        "type": "emoji",
+        "value": "😵"
+      },
+      "durationMs": 2000
+    }
+  ]
+}
+```
+
+GIF 示例：
+
+```json
+{
+  "rules": [
+    {
+      "id": "boom-gif",
+      "enabled": true,
+      "keywords": ["爆炸", "炸了"],
+      "asset": {
+        "type": "gif",
+        "value": "assets/stickers/boom.gif"
+      },
+      "durationMs": 3000
+    }
+  ]
+}
+```
+
 ## 开发检查
 
 ```bash

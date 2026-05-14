@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "id": "retry-emoji",
+      "enabled": true,
+      "keywords": ["不对", "不行", "重新来"],
+      "asset": {
+        "type": "emoji",
+        "value": "😵"
+      },
+      "durationMs": 2000
+    }
+  ]
+}
