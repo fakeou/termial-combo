@@ -149,7 +149,16 @@ pnpm codex:scan /path/to/session.jsonl
 
 ## Prompt Sticker Rules
 
-daemon 会监听 Claude Code / Codex CLI hook 发送的用户 prompt。命中规则后，会在 combo 下方临时显示 emoji、图片、GIF 或 MP4 贴纸。
+daemon 会监听 Claude Code hook 发送的用户 prompt，也会默认监听 Codex 本地历史文件 `~/.codex/history.jsonl`。命中规则后，会在 combo 下方临时显示 emoji、图片、GIF 或 MP4 贴纸。
+
+Codex 监听不依赖 hook。daemon 启动时会从 `history.jsonl` 文件末尾开始 tail，只处理启动后的新增 prompt，不会重放历史记录。
+
+可以用环境变量调整 Codex 监听：
+
+```bash
+CODEX_HISTORY_PATH=/path/to/history.jsonl pnpm daemon
+CODEX_HISTORY_TAIL=0 pnpm daemon
+```
 
 默认配置路径：
 
