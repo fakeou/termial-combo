@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
 import { comboThemeForCount } from "./comboTheme.js";
 import { comboVisualState } from "./comboVisualState.js";
+import { stickerTimingForDuration } from "./stickerTiming.js";
 import "./style.css";
 
 const defaultComboWindowMs = 2000;
@@ -19,6 +20,8 @@ interface StickerDisplay {
   triggerId: string;
   asset: StickerAsset;
   durationMs: number;
+  exiting: boolean;
+  exitMs: number;
 }
 
 interface StickerTriggerDetail {
@@ -30,6 +33,7 @@ interface StickerTriggerDetail {
 function OverlayBadge(): React.ReactElement {
   const fireworkCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const stickerTimeoutRef = React.useRef<number | undefined>(undefined);
+  const stickerRemovalTimeoutRef = React.useRef<number | undefined>(undefined);
   const previousCountRef = React.useRef(0);
   const sssArmedRef = React.useRef(true);
   const [fireworksActive, setFireworksActive] = React.useState(false);
@@ -81,24 +85,40 @@ function OverlayBadge(): React.ReactElement {
       window.clearTimeout(stickerTimeoutRef.current);
       stickerTimeoutRef.current = undefined;
     };
+    const clearStickerRemovalTimeout = () => {
+      if (stickerRemovalTimeoutRef.current === undefined) return;
+      window.clearTimeout(stickerRemovalTimeoutRef.current);
+      stickerRemovalTimeoutRef.current = undefined;
+    };
+    const clearStickerTimers = () => {
+      clearStickerTimeout();
+      clearStickerRemovalTimeout();
+    };
 
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<unknown>).detail;
       if (!isStickerTriggerDetail(detail)) return;
 
-      clearStickerTimeout();
+      clearStickerTimers();
       const durationMs = clampStickerDuration(detail.durationMs);
-      setSticker({ triggerId: detail.triggerId, asset: detail.asset, durationMs });
+      const timing = stickerTimingForDuration(durationMs);
+      setSticker({ triggerId: detail.triggerId, asset: detail.asset, durationMs, exiting: false, exitMs: timing.exitMs });
       stickerTimeoutRef.current = window.setTimeout(() => {
         stickerTimeoutRef.current = undefined;
-        setSticker(undefined);
-      }, durationMs);
+        setSticker((current) =>
+          current?.triggerId === detail.triggerId ? { ...current, exiting: true } : current
+        );
+        stickerRemovalTimeoutRef.current = window.setTimeout(() => {
+          stickerRemovalTimeoutRef.current = undefined;
+          setSticker((current) => (current?.triggerId === detail.triggerId ? undefined : current));
+        }, timing.exitMs);
+      }, timing.visibleMs);
     };
 
     window.addEventListener("sticker-trigger", listener);
     return () => {
       window.removeEventListener("sticker-trigger", listener);
-      clearStickerTimeout();
+      clearStickerTimers();
     };
   }, []);
 
@@ -175,7 +195,12 @@ function OverlayBadge(): React.ReactElement {
         </section>
       )}
       {sticker ? (
-        <section className="sticker-stage" key={sticker.triggerId} aria-hidden="true">
+        <section
+          className={`sticker-stage${sticker.exiting ? " is-exiting" : ""}`}
+          key={sticker.triggerId}
+          style={{ "--sticker-exit-ms": `${sticker.exitMs}ms` } as React.CSSProperties}
+          aria-hidden="true"
+        >
           {sticker.asset.type === "emoji" ? (
             <span className="sticker-emoji">{sticker.asset.value}</span>
           ) : sticker.asset.type === "video" ? (
@@ -187,10 +212,10 @@ function OverlayBadge(): React.ReactElement {
               loop
               playsInline
               onError={() => {
-                if (stickerTimeoutRef.current !== undefined) {
-                  window.clearTimeout(stickerTimeoutRef.current);
-                  stickerTimeoutRef.current = undefined;
-                }
+                if (stickerTimeoutRef.current !== undefined) window.clearTimeout(stickerTimeoutRef.current);
+                if (stickerRemovalTimeoutRef.current !== undefined) window.clearTimeout(stickerRemovalTimeoutRef.current);
+                stickerTimeoutRef.current = undefined;
+                stickerRemovalTimeoutRef.current = undefined;
                 setSticker(undefined);
               }}
             />
@@ -200,10 +225,10 @@ function OverlayBadge(): React.ReactElement {
               src={sticker.asset.url}
               alt=""
               onError={() => {
-                if (stickerTimeoutRef.current !== undefined) {
-                  window.clearTimeout(stickerTimeoutRef.current);
-                  stickerTimeoutRef.current = undefined;
-                }
+                if (stickerTimeoutRef.current !== undefined) window.clearTimeout(stickerTimeoutRef.current);
+                if (stickerRemovalTimeoutRef.current !== undefined) window.clearTimeout(stickerRemovalTimeoutRef.current);
+                stickerTimeoutRef.current = undefined;
+                stickerRemovalTimeoutRef.current = undefined;
                 setSticker(undefined);
               }}
             />

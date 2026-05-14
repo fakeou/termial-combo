@@ -61,6 +61,18 @@ body {
   place-items: center;
   transform: translateX(-50%);
   pointer-events: none;
+  opacity: 1;
+  transition:
+    opacity var(--sticker-exit-ms, 420ms) ease,
+    transform var(--sticker-exit-ms, 420ms) cubic-bezier(0.2, 0, 0.2, 1),
+    filter var(--sticker-exit-ms, 420ms) ease;
+  will-change: opacity, transform, filter;
+}
+
+.sticker-stage.is-exiting {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px) scale(0.94);
+  filter: blur(1px);
 }
 
 .sticker-emoji {
