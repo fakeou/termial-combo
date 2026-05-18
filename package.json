@@ -12,6 +12,8 @@
     "overlay:vite": "vite --host 127.0.0.1 --port 5173",
     "overlay:electron": "electron dist/electron-app",
     "build:electron": "tsc -p tsconfig.electron.json && mkdir -p dist/electron-app && cp src/electron/main.cjs dist/electron-app/main.cjs && cp src/electron/app-package.json dist/electron-app/package.json",
+    "build:app": "tsc -p tsconfig.package.json && vite build --outDir dist/renderer",
+    "package:mac": "pnpm build:electron && pnpm build:app && node scripts/package-mac.mjs",
     "detect:warp": "tsx src/cli/detectWarp.ts",
     "events:test": "tsx scripts/send-test-events.ts",
     "codex:scan": "tsx src/cli/scanCodexSession.ts",
@@ -35,6 +37,7 @@
     "vite": "^8.0.12"
   },
   "devDependencies": {
+    "@electron/packager": "^20.0.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

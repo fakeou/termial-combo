@@ -1,21 +1,33 @@
 const electron = require("electron");
 const childProcess = require("node:child_process");
 const fs = require("node:fs/promises");
+const fsSync = require("node:fs");
 const path = require("node:path");
+const { buildPackagedDaemonSpawnEnv } = require("./packagedDaemon.cjs");
 
 const { app, BrowserWindow, Menu, Tray, nativeImage } = electron;
 
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
+
 const overlaySize = { width: 360, height: 320, margin: -4 };
 const pollMs = Number(process.env.OVERLAY_POLL_MS || "100");
-const rendererUrl = process.env.OVERLAY_RENDERER_URL || "http://127.0.0.1:5173";
 const daemonEventsUrl = process.env.OVERLAY_EVENTS_URL || "http://127.0.0.1:39877/events";
 const daemonCodexScanUrl = process.env.OVERLAY_CODEX_SCAN_URL || codexScanUrlFromEventsUrl(daemonEventsUrl);
 const forceLastWarp = process.env.OVERLAY_FORCE_WARP === "1";
-const inputCounterEnabled = process.env.OVERLAY_INPUT_COUNTER === "1";
+const inputCounterEnabled = process.env.OVERLAY_INPUT_COUNTER !== "0";
 const codexScanOnEnterEnabled = process.env.OVERLAY_CODEX_SCAN_ON_ENTER !== "0";
 const initialComboWindowMs = Number(process.env.OVERLAY_COMBO_WINDOW_MS || "2000");
-const projectRoot = process.cwd();
+const packagedAppRoot = path.join(app.getAppPath(), "resources");
+const projectRoot = app.isPackaged ? packagedAppRoot : process.cwd();
+const rendererUrl = process.env.OVERLAY_RENDERER_URL || (app.isPackaged
+  ? pathToFileURL(path.join(projectRoot, "dist", "renderer", "index.html")).toString()
+  : "http://127.0.0.1:5173");
 const statePath = path.join(projectRoot, "logs", "overlay-state.json");
+const mainLogPath = path.join(projectRoot, "logs", "main.log");
 const comboStyles = [
   { id: "arcade", label: "DNF Arcade" },
   { id: "neon", label: "Neon Blade" },
@@ -29,6 +41,7 @@ const comboWindowOptions = [
 ];
 
 let overlayWindow;
+let keeperWindow;
 let tray;
 let inputHelper;
 let isPolling = false;
@@ -41,15 +54,40 @@ let lastSentComboWindowMs = undefined;
 let selectedComboStyle = "arcade";
 let comboWindowMs = initialComboWindowMs;
 let lastCodexScanErrorAt = 0;
+let daemonProcess;
 const seenStickerTriggerIds = new Set();
 const seenStickerTriggerIdOrder = [];
 const maxSeenStickerTriggerIds = 500;
 
 app.setActivationPolicy("accessory");
+process.on("uncaughtException", (error) => {
+  logMain(`uncaughtException ${messageOf(error)}`);
+});
+process.on("unhandledRejection", (error) => {
+  logMain(`unhandledRejection ${messageOf(error)}`);
+});
+
+app.on("second-instance", () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.showInactive();
+  }
+});
 
 app.whenReady().then(async () => {
+  logMain(`ready packaged=${app.isPackaged} root=${projectRoot} renderer=${rendererUrl}`);
   await writeOverlayState({ visible: false, reason: "app_ready_cjs", inputCounterEnabled, codexScanOnEnterEnabled });
+  startPackagedDaemon();
   createTray();
+  keeperWindow = new BrowserWindow({
+    width: 1,
+    height: 1,
+    show: false,
+    skipTaskbar: true,
+    frame: false,
+    webPreferences: {
+      backgroundThrottling: false
+    }
+  });
 
   overlayWindow = new BrowserWindow({
     width: overlaySize.width,
@@ -232,10 +270,41 @@ function refreshTrayMenu() {
 }
 
 function quitApp() {
+  logMain("quitApp");
   inputHelper?.kill();
   inputHelper = undefined;
+  daemonProcess?.kill();
+  daemonProcess = undefined;
+  keeperWindow?.destroy();
+  keeperWindow = undefined;
   overlayWindow?.destroy();
   app.quit();
+}
+
+function startPackagedDaemon() {
+  if (!app.isPackaged || process.env.OVERLAY_START_DAEMON === "0") return;
+
+  const daemonPath = path.join(projectRoot, "dist", "app-js", "cli", "daemon.js");
+  daemonProcess = childProcess.spawn(process.execPath, [daemonPath], {
+    cwd: projectRoot,
+    env: buildPackagedDaemonSpawnEnv({
+      baseEnv: process.env,
+      eventLogPath: path.join(projectRoot, "logs", "events.jsonl"),
+      stickerRulesPath: path.join(projectRoot, "config", "sticker-rules.json")
+    }),
+    stdio: ["ignore", "ignore", "pipe"]
+  });
+  logMain(`daemon started pid=${daemonProcess.pid} path=${daemonPath}`);
+
+  daemonProcess.stderr.setEncoding("utf8");
+  daemonProcess.stderr.on("data", (chunk) => {
+    writeOverlayState({ visible: Boolean(currentWarpActive), reason: "daemon_stderr", error: String(chunk).trim() }).catch(() => {});
+  });
+  daemonProcess.on("exit", (code, signal) => {
+    logMain(`daemon exit code=${code} signal=${signal}`);
+    writeOverlayState({ visible: Boolean(currentWarpActive), reason: "daemon_exit", code, signal }).catch(() => {});
+    daemonProcess = undefined;
+  });
 }
 
 async function recordInputActivity() {
@@ -453,4 +522,19 @@ async function writeOverlayState(state) {
 
 function messageOf(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function pathToFileURL(filePath) {
+  let resolved = path.resolve(filePath).replace(/\\/g, "/");
+  if (!resolved.startsWith("/")) resolved = `/${resolved}`;
+  return new URL(`file://${resolved}`);
+}
+
+function logMain(message) {
+  try {
+    fsSync.mkdirSync(path.dirname(mainLogPath), { recursive: true });
+    fsSync.appendFileSync(mainLogPath, `${new Date().toISOString()} ${message}\n`, "utf8");
+  } catch {
+    // Logging must not affect overlay startup.
+  }
 }
