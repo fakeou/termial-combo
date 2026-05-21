@@ -1,4 +1,6 @@
-import { activeWindow } from "active-win";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Bounds, ContextEvent } from "./types.js";
 
 export interface ActiveWindowInfo {
@@ -14,24 +16,63 @@ export function isWarpWindow(info: Pick<ActiveWindowInfo, "appName" | "bundleId"
 }
 
 export async function getActiveWindowInfo(): Promise<ActiveWindowInfo | undefined> {
-  const result = await activeWindow();
+  const result = await getMacActiveWindow();
   if (!result) return undefined;
   const owner = result.owner;
-  const bounds = result.bounds
-    ? {
-        x: result.bounds.x,
-        y: result.bounds.y,
-        width: result.bounds.width,
-        height: result.bounds.height
-      }
-    : undefined;
+  const bounds = boundsFromUnknown(result.bounds);
 
   return {
     appName: owner?.name ?? "unknown",
-    bundleId: "bundleId" in owner ? owner.bundleId : undefined,
+    bundleId: owner?.bundleId,
     pid: owner?.processId,
     title: result.title,
     bounds
+  };
+}
+
+async function getMacActiveWindow(): Promise<
+  | {
+      owner?: { name?: string; bundleId?: string; processId?: number };
+      title?: string;
+      bounds?: { x?: number; y?: number; width?: number; height?: number };
+    }
+  | undefined
+> {
+  const require = createRequire(import.meta.url);
+  const activeWinEntryPath = require.resolve("active-win");
+  const activeWinModuleUrl = activeWinMacosModuleUrl(activeWinEntryPath);
+  const { activeWindow } = await import(activeWinModuleUrl);
+  return activeWindow(activeWinQueryOptions());
+}
+
+export function activeWinMacosModuleUrl(activeWinEntryPath: string): string {
+  return pathToFileURL(join(dirname(activeWinEntryPath), "lib", "macos.js")).href;
+}
+
+export function activeWinQueryOptions(): { accessibilityPermission: false; screenRecordingPermission: false } {
+  return {
+    accessibilityPermission: false,
+    screenRecordingPermission: false
+  };
+}
+
+function boundsFromUnknown(input: { x?: number; y?: number; width?: number; height?: number } | undefined): Bounds | undefined {
+  if (!input) return undefined;
+
+  if (
+    typeof input.x !== "number" ||
+    typeof input.y !== "number" ||
+    typeof input.width !== "number" ||
+    typeof input.height !== "number"
+  ) {
+    return undefined;
+  }
+
+  return {
+    x: input.x,
+    y: input.y,
+    width: input.width,
+    height: input.height
   };
 }
 

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { JsonlEventStore } from "../eventStore.js";
 import { createEventServer, listen } from "../httpServer.js";
 import { postEvent } from "../client.js";
-import { loadStickerRules } from "../stickerRules.js";
+import { loadAppConfig } from "../appConfig.js";
 import { CodexHistoryTailer } from "../codex/historyTailer.js";
 import { getActiveWindowInfo, toWindowEvents, ActiveWindowInfo } from "../windowDetector.js";
 
@@ -16,6 +16,7 @@ const endpoint = `http://${host}:${port}/events`;
 const stickerRulesPath = process.env.STICKER_RULES_PATH
   ? resolve(process.env.STICKER_RULES_PATH)
   : resolve(process.cwd(), "config", "sticker-rules.json");
+const appConfigPath = process.env.APP_CONFIG_PATH ? resolve(process.env.APP_CONFIG_PATH) : stickerRulesPath;
 const codexHistoryTailEnabled = process.env.CODEX_HISTORY_TAIL !== "0";
 const codexHistoryPath = process.env.CODEX_HISTORY_PATH
   ? resolve(process.env.CODEX_HISTORY_PATH)
@@ -57,7 +58,7 @@ if (codexHistoryTailEnabled) {
 const server = createEventServer({
   store,
   stickerRules: {
-    load: () => loadStickerRules({ configPath: stickerRulesPath, projectRoot: process.cwd() }),
+    load: async () => (await loadAppConfig({ configPath: appConfigPath, projectRoot: process.cwd() })).rules,
     onError: async (error) => {
       await store.add({
         type: "hook_error",
@@ -65,10 +66,14 @@ const server = createEventServer({
         text: error instanceof Error ? error.message : String(error),
         metadata: {
           phase: "sticker_rules_load",
-          configPath: stickerRulesPath
+          configPath: appConfigPath
         }
       });
     }
+  },
+  appConfig: {
+    configPath: appConfigPath,
+    projectRoot: process.cwd()
   },
   codexScan: codexHistoryTailer
     ? {
@@ -86,7 +91,7 @@ if (codexHistoryTailer) {
 await listen(server, port, host);
 console.log(`[warp-ai-context] daemon listening on http://${host}:${port}`);
 console.log(`[warp-ai-context] writing events to ${logPath}`);
-console.log(`[warp-ai-context] loading sticker rules from ${stickerRulesPath}`);
+console.log(`[warp-ai-context] loading app config from ${appConfigPath}`);
 if (codexHistoryTailEnabled) {
   console.log(`[warp-ai-context] tailing Codex history from ${codexHistoryPath}`);
 }

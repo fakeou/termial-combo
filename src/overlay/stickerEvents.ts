@@ -9,6 +9,9 @@ export type StickerCommandAsset =
 export interface StickerCommand {
   triggerId: string;
   asset: StickerCommandAsset;
+  assets?: StickerCommandAsset[];
+  displayMode?: "single" | "cycle";
+  cycleIntervalMs?: number;
   durationMs: number;
   matchedKeyword?: string;
   ruleId?: string;
@@ -36,6 +39,16 @@ export function extractNewStickerCommands(
       durationMs: clampDuration(event.metadata.durationMs)
     };
 
+    const assets = normalizeAssets(event.metadata.assets);
+    if (assets.length > 0) {
+      command.assets = assets;
+    }
+
+    if (event.metadata.displayMode === "cycle" && (command.assets?.length ?? 0) > 1) {
+      command.displayMode = "cycle";
+      command.cycleIntervalMs = clampCycleInterval(event.metadata.cycleIntervalMs);
+    }
+
     const matchedKeyword = stringValue(event.metadata.matchedKeyword);
     if (matchedKeyword) command.matchedKeyword = matchedKeyword;
 
@@ -46,6 +59,14 @@ export function extractNewStickerCommands(
   }
 
   return commands;
+}
+
+function normalizeAssets(value: unknown): StickerCommandAsset[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const asset = normalizeAsset(item);
+    return asset ? [asset] : [];
+  });
 }
 
 function normalizeAsset(value: unknown): StickerCommandAsset | undefined {
@@ -65,6 +86,11 @@ function normalizeAsset(value: unknown): StickerCommandAsset | undefined {
 function clampDuration(value: unknown): number {
   const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 2000;
   return Math.min(5000, Math.max(1, duration));
+}
+
+function clampCycleInterval(value: unknown): number {
+  const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 750;
+  return Math.min(2000, Math.max(250, duration));
 }
 
 function stringValue(value: unknown): string | undefined {

@@ -178,9 +178,10 @@ config/sticker-rules.json
 
 ```bash
 STICKER_RULES_PATH=/path/to/rules.json pnpm daemon
+APP_CONFIG_PATH=/path/to/rules.json pnpm daemon
 ```
 
-规则会匹配中文关键词。`durationMs` 最长为 `5000`，超过会被 clamp 到 `5000`。
+规则会匹配中文关键词。`durationMs` 最长为 `5000`，超过会被 clamp 到 `5000`。打包后的菜单栏里可以打开编辑器，用图形界面调整 combo 样式、预览效果、配置关键词规则和上传贴纸素材。
 
 retry emoji 示例：
 
@@ -214,6 +215,33 @@ GIF 示例：
         "type": "gif",
         "path": "assets/stickers/boom.gif"
       },
+      "durationMs": 3000
+    }
+  ]
+}
+```
+
+循环贴纸示例：
+
+```json
+{
+  "rules": [
+    {
+      "id": "stuck-cycle",
+      "enabled": true,
+      "keywords": ["卡住", "无响应"],
+      "displayMode": "cycle",
+      "cycleIntervalMs": 700,
+      "assets": [
+        {
+          "type": "emoji",
+          "value": "😵"
+        },
+        {
+          "type": "gif",
+          "path": "assets/stickers/stuck.gif"
+        }
+      ],
       "durationMs": 3000
     }
   ]

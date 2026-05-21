@@ -14,6 +14,9 @@ export interface StickerRule {
   enabled?: boolean;
   keywords: string[];
   asset: StickerAsset;
+  assets?: StickerAsset[];
+  displayMode?: "single" | "cycle";
+  cycleIntervalMs?: number;
   durationMs: number;
 }
 
@@ -23,6 +26,9 @@ export const defaultStickerRule: StickerRule = {
   id: "retry-emoji",
   keywords: ["不对", "不行", "重新来"],
   asset: { type: "emoji", value: "😵" },
+  assets: [{ type: "emoji", value: "😵" }],
+  displayMode: "single",
+  cycleIntervalMs: 750,
   durationMs: 2000
 };
 
@@ -80,6 +86,9 @@ export function buildStickerTriggerEvents(
           matchedKeyword,
           promptSource: promptSourceFor(event),
           asset: rule.asset,
+          assets: rule.assets ?? [rule.asset],
+          displayMode: rule.displayMode ?? "single",
+          cycleIntervalMs: rule.cycleIntervalMs ?? 750,
           durationMs: rule.durationMs
         }
       }
@@ -109,15 +118,26 @@ function normalizeRule(input: unknown, projectRoot: string): StickerRule | undef
     : [];
   if (keywords.length === 0) return undefined;
 
-  const asset = normalizeAsset(input.asset, projectRoot);
-  if (!asset) return undefined;
+  const assets = normalizeAssets(input, projectRoot);
+  if (assets.length === 0) return undefined;
 
   return {
     id,
     keywords,
-    asset,
+    asset: assets[0],
+    assets,
+    displayMode: input.displayMode === "cycle" && assets.length > 1 ? "cycle" : "single",
+    cycleIntervalMs: clampCycleInterval(input.cycleIntervalMs),
     durationMs: clampDuration(input.durationMs)
   };
+}
+
+function normalizeAssets(input: Record<string, unknown>, projectRoot: string): StickerAsset[] {
+  const rawAssets = Array.isArray(input.assets) ? input.assets : input.asset ? [input.asset] : [];
+  return rawAssets.flatMap((rawAsset) => {
+    const asset = normalizeAsset(rawAsset, projectRoot);
+    return asset ? [asset] : [];
+  });
 }
 
 function normalizeAsset(input: unknown, projectRoot: string): StickerAsset | undefined {
@@ -144,6 +164,11 @@ function normalizeAsset(input: unknown, projectRoot: string): StickerAsset | und
 function clampDuration(value: unknown): number {
   const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : defaultStickerRule.durationMs;
   return Math.min(5000, Math.max(1, duration));
+}
+
+function clampCycleInterval(value: unknown): number {
+  const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 750;
+  return Math.min(2000, Math.max(250, duration));
 }
 
 function promptSourceFor(event: ContextEvent): unknown {

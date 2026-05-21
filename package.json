@@ -11,7 +11,7 @@
     "overlay:combo": "OVERLAY_INPUT_COUNTER=1 pnpm overlay",
     "overlay:vite": "vite --host 127.0.0.1 --port 5173",
     "overlay:electron": "electron dist/electron-app",
-    "build:electron": "tsc -p tsconfig.electron.json && mkdir -p dist/electron-app && cp src/electron/main.cjs dist/electron-app/main.cjs && cp src/electron/app-package.json dist/electron-app/package.json",
+    "build:electron": "tsc -p tsconfig.electron.json && mkdir -p dist/electron-app && cp src/electron/main.cjs dist/electron-app/main.cjs && cp src/electron/packagedDaemon.cjs dist/electron-app/packagedDaemon.cjs && cp src/electron/app-package.json dist/electron-app/package.json",
     "build:app": "tsc -p tsconfig.package.json && vite build --outDir dist/renderer",
     "package:mac": "pnpm build:electron && pnpm build:app && node scripts/package-mac.mjs",
     "detect:warp": "tsx src/cli/detectWarp.ts",

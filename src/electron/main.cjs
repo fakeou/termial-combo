@@ -3,9 +3,9 @@ const childProcess = require("node:child_process");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
-const { buildPackagedDaemonSpawnEnv } = require("./packagedDaemon.cjs");
+const { buildPackagedDaemonSpawnEnv, comboTriggerIdFromPromptEvent, hasRecentStickerGrace, hasUsableWarpBounds } = require("./packagedDaemon.cjs");
 
-const { app, BrowserWindow, Menu, Tray, nativeImage } = electron;
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog } = electron;
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
@@ -26,6 +26,7 @@ const projectRoot = app.isPackaged ? packagedAppRoot : process.cwd();
 const rendererUrl = process.env.OVERLAY_RENDERER_URL || (app.isPackaged
   ? pathToFileURL(path.join(projectRoot, "dist", "renderer", "index.html")).toString()
   : "http://127.0.0.1:5173");
+const disableRendererWebSecurity = /^https?:\/\//i.test(rendererUrl);
 const statePath = path.join(projectRoot, "logs", "overlay-state.json");
 const mainLogPath = path.join(projectRoot, "logs", "main.log");
 const comboStyles = [
@@ -41,6 +42,7 @@ const comboWindowOptions = [
 ];
 
 let overlayWindow;
+let settingsWindow;
 let keeperWindow;
 let tray;
 let inputHelper;
@@ -55,9 +57,15 @@ let selectedComboStyle = "arcade";
 let comboWindowMs = initialComboWindowMs;
 let lastCodexScanErrorAt = 0;
 let daemonProcess;
+let lastUsableWarpWindow;
+let lastStickerAt = 0;
+const stickerGraceMs = 5000;
 const seenStickerTriggerIds = new Set();
 const seenStickerTriggerIdOrder = [];
 const maxSeenStickerTriggerIds = 500;
+const seenComboTriggerIds = new Set();
+const seenComboTriggerIdOrder = [];
+const maxSeenComboTriggerIds = 500;
 
 app.setActivationPolicy("accessory");
 process.on("uncaughtException", (error) => {
@@ -102,7 +110,8 @@ app.whenReady().then(async () => {
     hasShadow: false,
     focusable: false,
     webPreferences: {
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      webSecurity: !disableRendererWebSecurity
     }
   });
 
@@ -124,6 +133,7 @@ app.whenReady().then(async () => {
   if (inputCounterEnabled || codexScanOnEnterEnabled) {
     startInputActivityHelper();
   }
+  registerSettingsIpc();
 });
 
 function loadRendererWithRetry(attempt = 1) {
@@ -136,6 +146,86 @@ function loadRendererWithRetry(attempt = 1) {
   });
 }
 
+function settingsUrl() {
+  const url = new URL(rendererUrl);
+  url.searchParams.set("view", "settings");
+  return url.toString();
+}
+
+function openSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+
+  settingsWindow = new BrowserWindow({
+    width: 1120,
+    height: 760,
+    minWidth: 980,
+    minHeight: 660,
+    title: "Termial Combo",
+    show: false,
+    webPreferences: {
+      backgroundThrottling: false,
+      contextIsolation: false,
+      nodeIntegration: true,
+      webSecurity: !disableRendererWebSecurity
+    }
+  });
+
+  settingsWindow.loadURL(settingsUrl()).catch((error) => {
+    logMain(`settings renderer load failed ${messageOf(error)}`);
+  });
+  settingsWindow.once("ready-to-show", () => {
+    settingsWindow?.show();
+  });
+  settingsWindow.on("closed", () => {
+    settingsWindow = undefined;
+  });
+}
+
+function registerSettingsIpc() {
+  ipcMain.handle("termial:get-config", async () => {
+    const response = await fetch(configUrlFromEventsUrl(daemonEventsUrl));
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    const payload = await response.json();
+    return payload.config;
+  });
+
+  ipcMain.handle("termial:save-config", async (_event, config) => {
+    const response = await fetch(configUrlFromEventsUrl(daemonEventsUrl), {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(config)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    const payload = await response.json();
+    await sendOverlaySettings(payload.config?.combo);
+    return payload.config;
+  });
+
+  ipcMain.handle("termial:choose-asset", async () => {
+    const result = await dialog.showOpenDialog(settingsWindow, {
+      properties: ["openFile"],
+      filters: [
+        { name: "Sticker media", extensions: ["png", "jpg", "jpeg", "webp", "avif", "gif", "mp4", "webm", "mov"] }
+      ]
+    });
+    if (result.canceled || !result.filePaths[0]) return undefined;
+    const filePath = result.filePaths[0];
+    const dataBase64 = fsSync.readFileSync(filePath).toString("base64");
+    const response = await fetch(assetsUrlFromEventsUrl(daemonEventsUrl), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: path.basename(filePath), dataBase64 })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    const payload = await response.json();
+    return payload.asset;
+  });
+}
+
 async function updateOverlay() {
   if (!overlayWindow || overlayWindow.isDestroyed() || isPolling) return;
   isPolling = true;
@@ -144,6 +234,17 @@ async function updateOverlay() {
     await forwardStickerCommands(events);
     const active = getWarpWindowFromEvents(events, forceLastWarp);
     if (!active || !active.bounds || !isWarpWindow(active)) {
+      const fallbackActive = recentComboWarpWindow();
+      if (fallbackActive) {
+        await showOverlayForWarpWindow(fallbackActive, { reason: "combo_grace" });
+        return;
+      }
+      const stickerFallbackActive = recentStickerWarpWindow();
+      if (stickerFallbackActive) {
+        await showOverlayForWarpWindow(stickerFallbackActive, { reason: "sticker_grace" });
+        return;
+      }
+
       overlayWindow.hide();
       currentWarpActive = false;
       comboCount = 0;
@@ -153,25 +254,9 @@ async function updateOverlay() {
     }
 
     currentWarpActive = true;
-    comboCount = valueAt(Date.now());
-    const bounds = computeOverlayBounds(active.bounds, overlaySize);
-    overlayWindow.setBounds(bounds, false);
-    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    overlayWindow.showInactive();
-    await sendComboState(comboCount, { ifChanged: true });
-    await writeOverlayState({
-      visible: true,
-      active,
-      overlay: bounds,
-      comboCount,
-      inputCounterEnabled,
-      codexScanOnEnterEnabled,
-      selectedComboStyle,
-      comboWindowMs
-    });
-    if (process.env.OVERLAY_DEBUG === "1") {
-      console.log(`[overlay] visible ${JSON.stringify({ active, overlay: bounds })}`);
-    }
+    lastUsableWarpWindow = active;
+    await recordPromptComboTriggers(events);
+    await showOverlayForWarpWindow(active);
   } catch (error) {
     overlayWindow.hide();
     await writeOverlayState({ visible: false, reason: "error", error: messageOf(error) });
@@ -180,19 +265,65 @@ async function updateOverlay() {
   }
 }
 
+async function showOverlayForWarpWindow(active, options = {}) {
+  currentWarpActive = true;
+  comboCount = valueAt(Date.now());
+  const bounds = computeOverlayBounds(active.bounds, overlaySize);
+  overlayWindow.setBounds(bounds, false);
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.showInactive();
+  await sendComboState(comboCount, { ifChanged: true });
+  await writeOverlayState({
+    visible: true,
+    reason: options.reason,
+    active,
+    overlay: bounds,
+    comboCount,
+    inputCounterEnabled,
+    codexScanOnEnterEnabled,
+    selectedComboStyle,
+    comboWindowMs
+  });
+  if (process.env.OVERLAY_DEBUG === "1") {
+    console.log(`[overlay] visible ${JSON.stringify({ active, overlay: bounds })}`);
+  }
+}
+
+function recentComboWarpWindow() {
+  if (!lastUsableWarpWindow || comboCount === 0) return undefined;
+  return valueAt(Date.now()) > 0 ? lastUsableWarpWindow : undefined;
+}
+
+function recentStickerWarpWindow() {
+  return hasRecentStickerGrace({
+    now: Date.now(),
+    lastStickerAt,
+    graceMs: stickerGraceMs,
+    hasLastUsableWarpWindow: Boolean(lastUsableWarpWindow)
+  })
+    ? lastUsableWarpWindow
+    : undefined;
+}
+
 function startInputActivityHelper() {
   const helperPath = path.join(projectRoot, "scripts", "key-activity.swift");
+  const swiftPath = fsSync.existsSync("/usr/bin/swift") ? "/usr/bin/swift" : "swift";
+  logMain(`input helper starting command=${swiftPath} path=${helperPath}`);
   writeOverlayState({ visible: Boolean(currentWarpActive), reason: "input_helper_starting", helperPath }).catch(() => {});
-  inputHelper = childProcess.spawn("swift", [helperPath], {
+  inputHelper = childProcess.spawn(swiftPath, [helperPath], {
     cwd: projectRoot,
     stdio: ["ignore", "pipe", "pipe"]
   });
+  logMain(`input helper started pid=${inputHelper.pid ?? "unknown"}`);
   writeOverlayState({ visible: Boolean(currentWarpActive), reason: "input_helper_started", helperPath, pid: inputHelper.pid }).catch(() => {});
 
   inputHelper.stdout.setEncoding("utf8");
   inputHelper.stdout.on("data", (chunk) => {
     for (const line of String(chunk).split(/\r?\n/)) {
       const inputEvent = line.trim();
+      if (inputEvent) {
+        logMain(`input helper event=${inputEvent}`);
+      }
       if ((inputEvent === "commit" || inputEvent === "enter") && inputCounterEnabled) {
         recordInputActivity().catch(() => {});
       }
@@ -204,10 +335,18 @@ function startInputActivityHelper() {
 
   inputHelper.stderr.setEncoding("utf8");
   inputHelper.stderr.on("data", (chunk) => {
+    logMain(`input helper stderr=${String(chunk).trim()}`);
     writeOverlayState({ visible: Boolean(currentWarpActive), reason: "input_helper_stderr", error: String(chunk).trim() }).catch(() => {});
   });
 
+  inputHelper.on("error", (error) => {
+    logMain(`input helper error=${messageOf(error)}`);
+    writeOverlayState({ visible: Boolean(currentWarpActive), reason: "input_helper_error", error: messageOf(error) }).catch(() => {});
+    inputHelper = undefined;
+  });
+
   inputHelper.on("exit", (code, signal) => {
+    logMain(`input helper exit code=${code} signal=${signal}`);
     writeOverlayState({ visible: Boolean(currentWarpActive), reason: "input_helper_exit", code, signal }).catch(() => {});
     inputHelper = undefined;
   });
@@ -231,6 +370,13 @@ function refreshTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      {
+        label: "打开编辑器",
+        click: () => {
+          openSettingsWindow();
+        }
+      },
+      { type: "separator" },
       {
         label: "样式",
         submenu: comboStyles.map((style) => ({
@@ -308,11 +454,27 @@ function startPackagedDaemon() {
 }
 
 async function recordInputActivity() {
-  if (!currentWarpActive || !overlayWindow || overlayWindow.isDestroyed()) return;
+  if (!currentWarpActive || !overlayWindow || overlayWindow.isDestroyed()) {
+    logMain(`combo ignored currentWarpActive=${currentWarpActive} hasOverlay=${Boolean(overlayWindow && !overlayWindow.isDestroyed())}`);
+    return;
+  }
   const now = Date.now();
   comboCount = valueAt(now) + 1;
   lastInputAt = now;
+  logMain(`combo recorded count=${comboCount}`);
   await sendComboState(comboCount);
+}
+
+async function recordPromptComboTriggers(events) {
+  if (!currentWarpActive || !overlayWindow || overlayWindow.isDestroyed()) return;
+
+  for (const event of events) {
+    const triggerId = comboTriggerIdFromPromptEvent(event);
+    if (!triggerId || seenComboTriggerIds.has(triggerId)) continue;
+
+    rememberComboTriggerId(triggerId);
+    await recordInputActivity();
+  }
 }
 
 async function triggerCodexScanOnEnter() {
@@ -362,7 +524,23 @@ async function sendComboState(count, options = {}) {
 
 async function sendOverlaySettings() {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
-  const detail = JSON.stringify({ style: selectedComboStyle, comboWindowMs });
+  let comboConfig;
+  try {
+    const response = await fetch(configUrlFromEventsUrl(daemonEventsUrl));
+    if (response.ok) {
+      const payload = await response.json();
+      comboConfig = payload.config?.combo;
+      if (comboConfig && typeof comboConfig.comboWindowMs === "number") {
+        comboWindowMs = comboConfig.comboWindowMs;
+      }
+      if (comboConfig && typeof comboConfig.style === "string" && comboConfig.style !== "custom") {
+        selectedComboStyle = comboConfig.style;
+      }
+    }
+  } catch {
+    // The overlay can run with menu-only settings while the daemon starts.
+  }
+  const detail = JSON.stringify({ style: selectedComboStyle, comboWindowMs, combo: comboConfig });
   await overlayWindow.webContents.executeJavaScript(
     `window.dispatchEvent(new CustomEvent("combo-settings", { detail: ${detail} }))`
   ).catch(() => {});
@@ -382,7 +560,13 @@ async function getRecentDaemonEvents() {
 function getWarpWindowFromEvents(events, useLastWarp) {
   const latest = [...events]
     .reverse()
-    .find((event) => event.type === "warp_window_detected" || (!useLastWarp && event.type === "active_app_changed"));
+    .find((event) => {
+      if (event.type !== "warp_window_detected" && (useLastWarp || event.type !== "active_app_changed")) {
+        return false;
+      }
+
+      return hasUsableWarpBounds(event.metadata?.bounds);
+    });
   if (!latest || latest.type !== "warp_window_detected") return undefined;
   const metadata = latest.metadata || {};
   if (!metadata.bounds || typeof metadata.bounds !== "object") return undefined;
@@ -399,6 +583,7 @@ async function forwardStickerCommands(events) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const commands = extractNewStickerCommands(events);
   for (const command of commands) {
+    lastStickerAt = Date.now();
     const detail = JSON.stringify(command);
     await overlayWindow.webContents.executeJavaScript(
       `window.dispatchEvent(new CustomEvent("sticker-trigger", { detail: ${detail} }))`
@@ -452,6 +637,20 @@ function rememberStickerTriggerId(triggerId) {
     const oldestTriggerId = seenStickerTriggerIdOrder.shift();
     if (oldestTriggerId !== undefined) {
       seenStickerTriggerIds.delete(oldestTriggerId);
+    }
+  }
+}
+
+function rememberComboTriggerId(triggerId) {
+  if (seenComboTriggerIds.has(triggerId)) return;
+
+  seenComboTriggerIds.add(triggerId);
+  seenComboTriggerIdOrder.push(triggerId);
+
+  while (seenComboTriggerIdOrder.length > maxSeenComboTriggerIds) {
+    const oldestTriggerId = seenComboTriggerIdOrder.shift();
+    if (oldestTriggerId !== undefined) {
+      seenComboTriggerIds.delete(oldestTriggerId);
     }
   }
 }
@@ -512,6 +711,30 @@ function codexScanUrlFromEventsUrl(eventsUrl) {
     return url.toString();
   } catch {
     return "http://127.0.0.1:39877/codex/scan";
+  }
+}
+
+function configUrlFromEventsUrl(eventsUrl) {
+  try {
+    const url = new URL(eventsUrl);
+    url.pathname = "/config";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "http://127.0.0.1:39877/config";
+  }
+}
+
+function assetsUrlFromEventsUrl(eventsUrl) {
+  try {
+    const url = new URL(eventsUrl);
+    url.pathname = "/assets";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "http://127.0.0.1:39877/assets";
   }
 }
 

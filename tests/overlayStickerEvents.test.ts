@@ -89,4 +89,35 @@ describe("extractNewStickerCommands", () => {
       2000
     ]);
   });
+
+  it("extracts cycle sticker commands with multiple assets", () => {
+    const seenTriggerIds = new Set<string>();
+    const events = [
+      event({
+        triggerId: "cycle",
+        asset: { type: "emoji", value: "😵" },
+        assets: [
+          { type: "emoji", value: "😵" },
+          { type: "video", url: "file:///tmp/stuck.mp4" }
+        ],
+        displayMode: "cycle",
+        cycleIntervalMs: 700,
+        durationMs: 3000
+      })
+    ];
+
+    expect(extractNewStickerCommands(events, seenTriggerIds)).toEqual([
+      {
+        triggerId: "cycle",
+        asset: { type: "emoji", value: "😵" },
+        assets: [
+          { type: "emoji", value: "😵" },
+          { type: "video", url: "file:///tmp/stuck.mp4" }
+        ],
+        displayMode: "cycle",
+        cycleIntervalMs: 700,
+        durationMs: 3000
+      }
+    ]);
+  });
 });

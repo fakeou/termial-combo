@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWarpWindow, toWindowEvents } from "../src/windowDetector.js";
+import { activeWinMacosModuleUrl, activeWinQueryOptions, isWarpWindow, toWindowEvents } from "../src/windowDetector.js";
 
 describe("window detector helpers", () => {
   it("recognizes Warp by app name or bundle id", () => {
@@ -27,5 +27,18 @@ describe("window detector helpers", () => {
       "warp_window_detected"
     ]);
     expect(events[2].metadata).toMatchObject({ title: "repo", bounds: { x: 10, y: 20, width: 900, height: 600 } });
+  });
+
+  it("resolves active-win through the macOS implementation file", () => {
+    expect(activeWinMacosModuleUrl("/app/node_modules/active-win/index.js")).toBe(
+      "file:///app/node_modules/active-win/lib/macos.js"
+    );
+  });
+
+  it("does not request macOS permissions from the polling loop", () => {
+    expect(activeWinQueryOptions()).toEqual({
+      accessibilityPermission: false,
+      screenRecordingPermission: false
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -119,6 +119,80 @@ describe("HTTP Codex scan trigger", () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ ok: true });
     expect(scanCount).toBe(1);
+  });
+});
+
+describe("HTTP app config", () => {
+  it("reads and saves app config through the local server", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "http-app-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "combo-config.json");
+    const { baseUrl } = await startTestServer({
+      appConfig: {
+        configPath,
+        projectRoot: dir
+      }
+    });
+
+    const initialResponse = await fetch(`${baseUrl}/config`);
+    expect(initialResponse.status).toBe(200);
+    await expect(initialResponse.json()).resolves.toMatchObject({
+      ok: true,
+      config: {
+        combo: { style: "arcade" },
+        rules: [{ id: "retry-emoji" }]
+      }
+    });
+
+    const saveResponse = await fetch(`${baseUrl}/config`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        combo: { style: "custom", counter: { label: "CHAIN" } },
+        rules: [{ id: "retry", keywords: ["不对"], asset: { type: "emoji", value: "😵" }, durationMs: 2000 }]
+      })
+    });
+
+    expect(saveResponse.status).toBe(200);
+    await expect(saveResponse.json()).resolves.toMatchObject({
+      ok: true,
+      config: { combo: { style: "custom", counter: { label: "CHAIN" } } }
+    });
+    const saved = JSON.parse(await readFile(configPath, "utf8"));
+    expect(saved.combo.counter.label).toBe("CHAIN");
+  });
+
+  it("uploads sticker assets into the configured asset directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "http-app-assets-"));
+    tempDirs.push(dir);
+    const { baseUrl } = await startTestServer({
+      appConfig: {
+        configPath: join(dir, "combo-config.json"),
+        projectRoot: dir,
+        assetDir: join(dir, "assets", "stickers")
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/assets`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        filename: " retry cat.gif ",
+        dataBase64: Buffer.from("gif-bytes").toString("base64")
+      })
+    });
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      asset: {
+        type: "gif",
+        path: "assets/stickers/retry-cat.gif"
+      }
+    });
+    await expect(readFile(join(dir, "assets", "stickers", "retry-cat.gif"), "utf8")).resolves.toBe("gif-bytes");
   });
 });
 

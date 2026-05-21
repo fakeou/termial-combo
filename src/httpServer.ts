@@ -1,4 +1,7 @@
 import http from "node:http";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, extname, join, relative } from "node:path";
+import { loadAppConfig, saveAppConfig } from "./appConfig.js";
 import { JsonlEventStore } from "./eventStore.js";
 import { buildStickerTriggerEvents, StickerRule } from "./stickerRules.js";
 import { ContextEvent } from "./types.js";
@@ -13,6 +16,11 @@ export interface ServerOptions {
   };
   codexScan?: {
     scan: () => Promise<void>;
+  };
+  appConfig?: {
+    configPath: string;
+    projectRoot: string;
+    assetDir?: string;
   };
 }
 
@@ -30,6 +38,26 @@ export function createEventServer(options: ServerOptions): http.Server {
 
       if (req.method === "GET" && url.pathname === "/events") {
         return sendJson(res, 200, { events: store.recent() });
+      }
+
+      if (req.method === "GET" && url.pathname === "/config" && options.appConfig) {
+        const config = await loadAppConfig(options.appConfig);
+        return sendJson(res, 200, { ok: true, config });
+      }
+
+      if (req.method === "PUT" && url.pathname === "/config" && options.appConfig) {
+        const body = await readBody(req);
+        const config = await saveAppConfig({
+          ...options.appConfig,
+          input: JSON.parse(body)
+        });
+        return sendJson(res, 200, { ok: true, config });
+      }
+
+      if (req.method === "POST" && url.pathname === "/assets" && options.appConfig) {
+        const body = await readBody(req);
+        const asset = await storeUploadedAsset(JSON.parse(body), options.appConfig);
+        return sendJson(res, 201, { ok: true, asset });
       }
 
       if (req.method === "POST" && url.pathname === "/events") {
@@ -51,6 +79,44 @@ export function createEventServer(options: ServerOptions): http.Server {
       return sendJson(res, 400, { ok: false, error: message });
     }
   });
+}
+
+async function storeUploadedAsset(
+  input: unknown,
+  options: NonNullable<ServerOptions["appConfig"]>
+): Promise<{ type: "image" | "gif" | "video"; path: string }> {
+  if (!isRecord(input)) throw new Error("Asset payload must be an object");
+  const filename = typeof input.filename === "string" ? input.filename.trim() : "";
+  const dataBase64 = typeof input.dataBase64 === "string" ? input.dataBase64.trim() : "";
+  if (!filename) throw new Error("Asset filename is required");
+  if (!dataBase64) throw new Error("Asset dataBase64 is required");
+
+  const extension = extname(filename).toLowerCase();
+  const type = assetTypeForExtension(extension);
+  if (!type) throw new Error(`Unsupported asset extension: ${extension || "none"}`);
+
+  const stem = basename(filename, extension)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "sticker";
+  const safeFilename = `${stem}${extension}`;
+  const assetDir = options.assetDir ?? join(options.projectRoot, "assets", "stickers");
+  const absolutePath = join(assetDir, safeFilename);
+  await mkdir(assetDir, { recursive: true });
+  await writeFile(absolutePath, Buffer.from(dataBase64, "base64"));
+
+  return {
+    type,
+    path: relative(options.projectRoot, absolutePath).replace(/\\/g, "/")
+  };
+}
+
+function assetTypeForExtension(extension: string): "image" | "gif" | "video" | undefined {
+  if (extension === ".gif") return "gif";
+  if ([".mp4", ".webm", ".mov"].includes(extension)) return "video";
+  if ([".png", ".jpg", ".jpeg", ".webp", ".avif"].includes(extension)) return "image";
+  return undefined;
 }
 
 async function storeStickerTriggerEvents(
@@ -94,4 +160,8 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

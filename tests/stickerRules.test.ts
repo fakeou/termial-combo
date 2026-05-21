@@ -61,6 +61,15 @@ describe("sticker rules", () => {
           path: join(projectRoot, "stickers/retry.png"),
           url: pathToFileURL(join(projectRoot, "stickers/retry.png")).toString()
         },
+        assets: [
+          {
+            type: "image",
+            path: join(projectRoot, "stickers/retry.png"),
+            url: pathToFileURL(join(projectRoot, "stickers/retry.png")).toString()
+          }
+        ],
+        displayMode: "single",
+        cycleIntervalMs: 750,
         durationMs: 5000
       }
     ]);
@@ -111,6 +120,9 @@ describe("sticker rules", () => {
           matchedKeyword: "不对",
           promptSource: "user",
           asset: { type: "emoji", value: "😵" },
+          assets: [{ type: "emoji", value: "😵" }],
+          displayMode: "single",
+          cycleIntervalMs: 750,
           durationMs: 2000
         }
       },
@@ -126,7 +138,55 @@ describe("sticker rules", () => {
           matchedKeyword: "重新来",
           promptSource: "user",
           asset: { type: "gif", path: "/tmp/retry.gif", url: "file:///tmp/retry.gif" },
+          assets: [{ type: "gif", path: "/tmp/retry.gif", url: "file:///tmp/retry.gif" }],
+          displayMode: "single",
+          cycleIntervalMs: 750,
           durationMs: 1000
+        }
+      }
+    ]);
+  });
+
+  it("creates cycle trigger events with all configured assets", () => {
+    const event: ContextEvent = {
+      type: "ai_prompt_submitted",
+      source: "codex-cli",
+      timestamp: "2026-05-14T01:02:03.000Z",
+      text: "这里卡住了"
+    };
+    const rules = [
+      {
+        id: "stuck-cycle",
+        keywords: ["卡住"],
+        asset: { type: "emoji" as const, value: "😵" },
+        assets: [
+          { type: "emoji" as const, value: "😵" },
+          { type: "gif" as const, path: "/tmp/stuck.gif", url: "file:///tmp/stuck.gif" }
+        ],
+        displayMode: "cycle" as const,
+        cycleIntervalMs: 600,
+        durationMs: 3000
+      }
+    ];
+
+    expect(buildStickerTriggerEvents(event, rules)).toEqual([
+      {
+        type: "sticker_triggered",
+        source: "sticker-rules",
+        text: "这里卡住了",
+        metadata: {
+          triggerId: "stuck-cycle:2026-05-14T01:02:03.000Z:0",
+          ruleId: "stuck-cycle",
+          matchedKeyword: "卡住",
+          promptSource: "codex-cli",
+          asset: { type: "emoji", value: "😵" },
+          assets: [
+            { type: "emoji", value: "😵" },
+            { type: "gif", path: "/tmp/stuck.gif", url: "file:///tmp/stuck.gif" }
+          ],
+          displayMode: "cycle",
+          cycleIntervalMs: 600,
+          durationMs: 3000
         }
       }
     ]);
@@ -163,7 +223,15 @@ describe("sticker rules", () => {
     );
 
     await expect(loadStickerRules({ configPath, projectRoot })).resolves.toEqual([
-      { id: "ok", keywords: ["again"], asset: { type: "emoji", value: "😵" }, durationMs: 100 }
+      {
+        id: "ok",
+        keywords: ["again"],
+        asset: { type: "emoji", value: "😵" },
+        assets: [{ type: "emoji", value: "😵" }],
+        displayMode: "single",
+        cycleIntervalMs: 750,
+        durationMs: 100
+      }
     ]);
   });
 });
