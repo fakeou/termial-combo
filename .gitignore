@@ -1,5 +1,7 @@
 node_modules/
 dist/
 logs/
+release/
+assets/stickers/
 .env
 .DS_Store
