@@ -164,6 +164,7 @@ describe("sticker rules", () => {
           { type: "gif" as const, path: "/tmp/stuck.gif", url: "file:///tmp/stuck.gif" }
         ],
         displayMode: "cycle" as const,
+        layout: { x: 0, y: 0, width: 1, height: 1, opacity: 0.75, fit: "cover" as const },
         cycleIntervalMs: 600,
         durationMs: 3000
       }
@@ -185,6 +186,7 @@ describe("sticker rules", () => {
             { type: "gif", path: "/tmp/stuck.gif", url: "file:///tmp/stuck.gif" }
           ],
           displayMode: "cycle",
+          layout: { x: 0, y: 0, width: 1, height: 1, opacity: 0.75, fit: "cover" },
           cycleIntervalMs: 600,
           durationMs: 3000
         }

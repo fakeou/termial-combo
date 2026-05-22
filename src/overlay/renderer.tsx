@@ -1,9 +1,12 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
+import { Rnd } from "react-rnd";
 import { comboThemeForCount } from "./comboTheme.js";
 import { comboVisualState } from "./comboVisualState.js";
+import { canvasRectToLayout, layoutToCanvasRect, presetStickerLayout } from "./layoutCanvas.js";
 import { stickerTimingForDuration } from "./stickerTiming.js";
+import { clampStickerLayout, defaultStickerLayout, StickerLayout, StickerLayoutFit } from "../stickerLayout.js";
 import "./style.css";
 
 const defaultComboWindowMs = 2000;
@@ -41,6 +44,7 @@ interface StickerDisplay {
   durationMs: number;
   exiting: boolean;
   exitMs: number;
+  layout?: StickerLayout;
 }
 
 interface StickerTriggerDetail {
@@ -50,6 +54,7 @@ interface StickerTriggerDetail {
   displayMode?: "single" | "cycle";
   cycleIntervalMs?: number;
   durationMs?: number;
+  layout?: StickerLayout;
 }
 
 type AppConfig = {
@@ -63,6 +68,7 @@ type AppConfig = {
     displayMode?: "single" | "cycle";
     cycleIntervalMs?: number;
     durationMs: number;
+    layout?: StickerLayout;
   }>;
 };
 
@@ -154,7 +160,8 @@ function OverlayBadge(): React.ReactElement {
         cycleIntervalMs: clampCycleInterval(detail.cycleIntervalMs),
         durationMs,
         exiting: false,
-        exitMs: timing.exitMs
+        exitMs: timing.exitMs,
+        layout: isStickerLayout(detail.layout) ? clampStickerLayout(detail.layout) : undefined
       });
       stickerTimeoutRef.current = window.setTimeout(() => {
         stickerTimeoutRef.current = undefined;
@@ -264,9 +271,9 @@ function OverlayBadge(): React.ReactElement {
       )}
       {sticker ? (
         <section
-          className={`sticker-stage${sticker.exiting ? " is-exiting" : ""}`}
+          className={`${sticker.layout ? "layout-sticker-stage" : "sticker-stage"}${sticker.exiting ? " is-exiting" : ""}`}
           key={sticker.triggerId}
-          style={{ "--sticker-exit-ms": `${sticker.exitMs}ms` } as React.CSSProperties}
+          style={stickerStyle(sticker)}
           aria-hidden="true"
         >
           {activeStickerAsset?.type === "emoji" ? (
@@ -274,6 +281,7 @@ function OverlayBadge(): React.ReactElement {
           ) : activeStickerAsset?.type === "video" ? (
             <video
               className="sticker-media"
+              style={sticker.layout ? { objectFit: sticker.layout.fit } : undefined}
               src={activeStickerAsset.url}
               muted
               autoPlay
@@ -290,6 +298,7 @@ function OverlayBadge(): React.ReactElement {
           ) : (
             <img
               className="sticker-media"
+              style={sticker.layout ? { objectFit: sticker.layout.fit } : undefined}
               src={activeStickerAsset?.url}
               alt=""
               onError={() => {
@@ -314,12 +323,23 @@ function SettingsApp(): React.ReactElement {
   const [previewCount, setPreviewCount] = React.useState(27);
 
   React.useEffect(() => {
+    document.documentElement.classList.add("settings-mode");
     document.body.classList.add("settings-mode");
     document.body.classList.remove("overlay-mode");
     loadConfig().then((loaded) => {
       setConfig(loaded);
       setStatus("已加载");
     }).catch((error) => setStatus(messageOf(error)));
+
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{ config?: unknown }>).detail;
+      if (isAppConfig(detail?.config)) {
+        setConfig(detail.config);
+        setStatus("已同步");
+      }
+    };
+    window.addEventListener("combo-settings", listener);
+    return () => window.removeEventListener("combo-settings", listener);
   }, []);
 
   if (!config) {
@@ -546,8 +566,121 @@ function RuleEditor({ rule, onChange, onDelete }: {
         <button onClick={upload}>上传素材</button>
         <button className="danger-button" onClick={onDelete}>删除规则</button>
       </div>
+      <LayoutCanvasEditor
+        asset={assets[0]}
+        layout={rule.layout}
+        onChange={(layout) => onChange({ layout })}
+      />
     </article>
   );
+}
+
+function LayoutCanvasEditor({
+  asset,
+  layout,
+  onChange
+}: {
+  asset?: StickerAsset & { path?: string };
+  layout?: StickerLayout;
+  onChange: (layout: StickerLayout) => void;
+}): React.ReactElement {
+  const canvasRef = React.useRef<HTMLDivElement | null>(null);
+  const [canvasSize, setCanvasSize] = React.useState({ width: 640, height: 400 });
+  const currentLayout = clampStickerLayout(layout ?? defaultStickerLayout);
+  const rect = layoutToCanvasRect(currentLayout, canvasSize);
+  const [editNonce, setEditNonce] = React.useState(0);
+
+  React.useLayoutEffect(() => {
+    const element = canvasRef.current;
+    if (!element) return;
+    const updateSize = () => {
+      const bounds = element.getBoundingClientRect();
+      setCanvasSize({
+        width: Math.max(1, Math.round(bounds.width)),
+        height: Math.max(1, Math.round(bounds.height))
+      });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const updateRect = (nextRect: { x: number; y: number; width: number; height: number }) => {
+    onChange(canvasRectToLayout(nextRect, canvasSize, { opacity: currentLayout.opacity, fit: currentLayout.fit }));
+  };
+  const applyPreset = (preset: "fill" | "center" | "top-right" | "reset") => {
+    onChange(presetStickerLayout(preset));
+    setEditNonce((value) => value + 1);
+  };
+
+  return (
+    <div className="layout-editor">
+      <div className="layout-editor-title">
+        <span>展示画布</span>
+        <select value={currentLayout.fit} onChange={(event) => onChange({ ...currentLayout, fit: event.target.value as StickerLayoutFit })}>
+          <option value="contain">Contain</option>
+          <option value="cover">Cover</option>
+          <option value="fill">Fill</option>
+        </select>
+      </div>
+      <div className="layout-toolbar">
+        <button onClick={() => applyPreset("fill")}>铺满</button>
+        <button onClick={() => applyPreset("center")}>居中</button>
+        <button onClick={() => applyPreset("top-right")}>右上</button>
+        <button onClick={() => applyPreset("reset")}>重置</button>
+      </div>
+      <label className="opacity-row">
+        透明度 {Math.round(currentLayout.opacity * 100)}%
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={currentLayout.opacity}
+          onChange={(event) => onChange({ ...currentLayout, opacity: Number(event.target.value) })}
+        />
+      </label>
+      <div className="layout-canvas" ref={canvasRef}>
+        <div className="layout-canvas-grid" />
+        <Rnd
+          key={`${editNonce}-${rect.x}-${rect.y}-${rect.width}-${rect.height}`}
+          bounds="parent"
+          default={{ x: rect.x, y: rect.y, width: rect.width, height: rect.height }}
+          minWidth={Math.max(16, canvasSize.width * 0.05)}
+          minHeight={Math.max(16, canvasSize.height * 0.05)}
+          enableUserSelectHack={false}
+          dragHandleClassName="layout-item"
+          resizeHandleStyles={{
+            bottomRight: { width: 14, height: 14, right: 2, bottom: 2 },
+            bottomLeft: { width: 14, height: 14, left: 2, bottom: 2 },
+            topRight: { width: 14, height: 14, right: 2, top: 2 },
+            topLeft: { width: 14, height: 14, left: 2, top: 2 }
+          }}
+          onDragStop={(_event, data) => updateRect({ x: data.x, y: data.y, width: data.node.offsetWidth, height: data.node.offsetHeight })}
+          onResizeStop={(_event, _direction, ref, _delta, position) => {
+            updateRect({
+              x: position.x,
+              y: position.y,
+              width: ref.offsetWidth,
+              height: ref.offsetHeight
+            });
+          }}
+        >
+          <div className="layout-item" style={{ opacity: currentLayout.opacity }}>
+            <StickerAssetPreview asset={asset} fit={currentLayout.fit} />
+          </div>
+        </Rnd>
+      </div>
+    </div>
+  );
+}
+
+function StickerAssetPreview({ asset, fit }: { asset?: StickerAsset; fit: StickerLayoutFit }): React.ReactElement {
+  if (!asset) return <span className="layout-empty">无素材</span>;
+  if (asset.type === "emoji") return <span className="layout-emoji">{asset.value}</span>;
+  if (asset.type === "video") return <video className="layout-media" src={asset.url} muted autoPlay loop playsInline style={{ objectFit: fit }} />;
+  return <img className="layout-media" src={asset.url} alt="" style={{ objectFit: fit }} />;
 }
 
 function launchSssFireworks(canvas: HTMLCanvasElement | null, onDone: () => void): void {
@@ -630,8 +763,30 @@ function comboDesignStyle(combo: typeof defaultComboDesign): React.CSSProperties
   } as React.CSSProperties;
 }
 
+function stickerStyle(sticker: StickerDisplay): React.CSSProperties {
+  const base = { "--sticker-exit-ms": `${sticker.exitMs}ms` } as React.CSSProperties;
+  if (!sticker.layout) return base;
+
+  return {
+    ...base,
+    left: `${sticker.layout.x * 100}%`,
+    top: `${sticker.layout.y * 100}%`,
+    width: `${sticker.layout.width * 100}%`,
+    height: `${sticker.layout.height * 100}%`,
+    opacity: sticker.layout.opacity
+  };
+}
+
 function isComboDesign(value: unknown): value is typeof defaultComboDesign {
   return isRecord(value) && isRecord(value.counter) && isRecord(value.background) && isRecord(value.animation);
+}
+
+function isAppConfig(value: unknown): value is AppConfig {
+  return isRecord(value) && isComboDesign(value.combo) && Array.isArray(value.rules);
+}
+
+function isStickerLayout(value: unknown): value is StickerLayout {
+  return isRecord(value);
 }
 
 function isStickerAsset(value: unknown): value is StickerAsset {
@@ -680,7 +835,8 @@ function newRule(): AppConfig["rules"][number] {
     assets: [{ type: "emoji", value: "😵" }],
     displayMode: "single",
     cycleIntervalMs: 750,
-    durationMs: 2000
+    durationMs: 2000,
+    layout: defaultStickerLayout
   };
 }
 
@@ -728,6 +884,7 @@ function messageOf(error: unknown): string {
 
 const params = new URLSearchParams(window.location.search);
 if (params.get("view") === "settings") {
+  document.documentElement.classList.add("settings-mode");
   document.body.classList.add("settings-mode");
   createRoot(document.getElementById("root")!).render(<SettingsApp />);
 } else {

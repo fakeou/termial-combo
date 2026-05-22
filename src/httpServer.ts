@@ -1,6 +1,7 @@
 import http from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 import { loadAppConfig, saveAppConfig } from "./appConfig.js";
 import { JsonlEventStore } from "./eventStore.js";
 import { buildStickerTriggerEvents, StickerRule } from "./stickerRules.js";
@@ -84,7 +85,7 @@ export function createEventServer(options: ServerOptions): http.Server {
 async function storeUploadedAsset(
   input: unknown,
   options: NonNullable<ServerOptions["appConfig"]>
-): Promise<{ type: "image" | "gif" | "video"; path: string }> {
+): Promise<{ type: "image" | "gif" | "video"; path: string; url: string }> {
   if (!isRecord(input)) throw new Error("Asset payload must be an object");
   const filename = typeof input.filename === "string" ? input.filename.trim() : "";
   const dataBase64 = typeof input.dataBase64 === "string" ? input.dataBase64.trim() : "";
@@ -108,7 +109,8 @@ async function storeUploadedAsset(
 
   return {
     type,
-    path: relative(options.projectRoot, absolutePath).replace(/\\/g, "/")
+    path: relative(options.projectRoot, absolutePath).replace(/\\/g, "/"),
+    url: pathToFileURL(absolutePath).toString()
   };
 }
 

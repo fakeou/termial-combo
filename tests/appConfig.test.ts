@@ -49,6 +49,14 @@ describe("app config", () => {
             displayMode: "cycle",
             durationMs: 9000,
             cycleIntervalMs: 120,
+            layout: {
+              x: 0,
+              y: 0,
+              width: 1,
+              height: 1,
+              opacity: 0.8,
+              fit: "cover"
+            },
             assets: [
               { type: "emoji", value: "😵" },
               { type: "gif", path: "stickers/retry.gif" }
@@ -79,6 +87,14 @@ describe("app config", () => {
       id: "retry-cycle",
       keywords: ["不对", "重新来"],
       displayMode: "cycle",
+      layout: {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        opacity: 0.8,
+        fit: "cover"
+      },
       durationMs: 5000,
       cycleIntervalMs: 250,
       assets: [

@@ -1,13 +1,57 @@
 {
+  "combo": {
+    "style": "arcade",
+    "comboWindowMs": 2000,
+    "counter": {
+      "label": "COMBO",
+      "subLabel": "HIT",
+      "numberColor": "#f4fdff",
+      "textColor": "#9ee8ff",
+      "accentColor": "#36b6ff",
+      "fontSize": 58,
+      "scale": 1,
+      "skewDeg": -8
+    },
+    "background": {
+      "enabled": true,
+      "style": "speed-lines",
+      "opacity": 1
+    },
+    "animation": {
+      "enter": "pop",
+      "hit": "shake",
+      "exit": "fade",
+      "fadeOutMs": 420
+    }
+  },
   "rules": [
     {
-      "id": "retry-emoji",
-      "enabled": true,
-      "keywords": ["不对", "不行", "重新来"],
+      "id": "rule-1779351783191",
+      "keywords": [
+        "不对"
+      ],
       "asset": {
-        "type": "emoji",
-        "value": "😵"
+        "type": "image",
+        "path": "/Users/ousu/Documents/work/termial-combo/assets/stickers/25211805d39548648f330b6b92058f67.png",
+        "url": "file:///Users/ousu/Documents/work/termial-combo/assets/stickers/25211805d39548648f330b6b92058f67.png"
       },
+      "assets": [
+        {
+          "type": "image",
+          "path": "/Users/ousu/Documents/work/termial-combo/assets/stickers/25211805d39548648f330b6b92058f67.png",
+          "url": "file:///Users/ousu/Documents/work/termial-combo/assets/stickers/25211805d39548648f330b6b92058f67.png"
+        }
+      ],
+      "displayMode": "single",
+      "layout": {
+        "x": 0.22822822822822822,
+        "y": 0.0432,
+        "width": 0.5615615615615616,
+        "height": 0.9104,
+        "opacity": 1,
+        "fit": "contain"
+      },
+      "cycleIntervalMs": 750,
       "durationMs": 2000
     }
   ]

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { clampStickerLayout, StickerLayout } from "./stickerLayout.js";
 import { ContextEvent } from "./types.js";
 
 export type StickerAsset =
@@ -16,6 +17,7 @@ export interface StickerRule {
   asset: StickerAsset;
   assets?: StickerAsset[];
   displayMode?: "single" | "cycle";
+  layout?: StickerLayout;
   cycleIntervalMs?: number;
   durationMs: number;
 }
@@ -88,6 +90,7 @@ export function buildStickerTriggerEvents(
           asset: rule.asset,
           assets: rule.assets ?? [rule.asset],
           displayMode: rule.displayMode ?? "single",
+          layout: rule.layout,
           cycleIntervalMs: rule.cycleIntervalMs ?? 750,
           durationMs: rule.durationMs
         }
@@ -127,6 +130,7 @@ function normalizeRule(input: unknown, projectRoot: string): StickerRule | undef
     asset: assets[0],
     assets,
     displayMode: input.displayMode === "cycle" && assets.length > 1 ? "cycle" : "single",
+    layout: input.layout ? clampStickerLayout(input.layout) : undefined,
     cycleIntervalMs: clampCycleInterval(input.cycleIntervalMs),
     durationMs: clampDuration(input.durationMs)
   };

@@ -14,12 +14,27 @@ body.overlay-mode {
   pointer-events: none;
 }
 
-body.settings-mode {
+html.settings-mode {
+  height: auto;
+  min-height: 100%;
   overflow: auto;
+}
+
+body.settings-mode {
+  overflow: visible;
   background: #f4f6f8;
   color: #17202a;
   user-select: auto;
   pointer-events: auto;
+}
+
+html.settings-mode body,
+html.settings-mode #root,
+body.settings-mode,
+body.settings-mode #root {
+  height: auto;
+  min-height: 100%;
+  overflow: visible;
 }
 
 .overlay-root {
@@ -109,6 +124,36 @@ body.settings-mode {
   border-radius: 8px;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.42));
   animation: sticker-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.layout-sticker-stage {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  transition:
+    opacity var(--sticker-exit-ms, 420ms) ease,
+    transform var(--sticker-exit-ms, 420ms) cubic-bezier(0.2, 0, 0.2, 1),
+    filter var(--sticker-exit-ms, 420ms) ease;
+  will-change: opacity, transform, filter;
+}
+
+.layout-sticker-stage.is-exiting {
+  opacity: 0 !important;
+  transform: translateY(-8px) scale(0.98);
+  filter: blur(1px);
+}
+
+.layout-sticker-stage .sticker-media {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.layout-sticker-stage .sticker-emoji {
+  font-size: clamp(32px, min(16vw, 16vh), 180px);
 }
 
 .sss-fireworks {
@@ -587,7 +632,10 @@ body.settings-mode {
 
 .settings-shell {
   min-height: 100%;
-  padding: 24px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 18px;
   box-sizing: border-box;
 }
 
@@ -597,7 +645,7 @@ body.settings-mode {
   justify-content: space-between;
   gap: 16px;
   margin: 0 auto 14px;
-  max-width: 1180px;
+  max-width: 100%;
 }
 
 .settings-header h1,
@@ -612,14 +660,14 @@ body.settings-mode {
 }
 
 .settings-status {
-  max-width: 1180px;
+  max-width: 100%;
   margin: 0 auto 14px;
   min-height: 20px;
   color: #516071;
 }
 
 .settings-grid {
-  max-width: 1180px;
+  max-width: 100%;
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(420px, 0.95fr) minmax(430px, 1.05fr);
@@ -642,6 +690,7 @@ body.settings-mode {
 .button-row,
 .form-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -651,7 +700,8 @@ body.settings-mode {
 }
 
 .form-row > label {
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 160px;
 }
 
 label {
@@ -671,6 +721,7 @@ button {
 
 input,
 select {
+  width: 100%;
   min-height: 34px;
   border: 1px solid #cbd5df;
   border-radius: 6px;
@@ -724,8 +775,6 @@ button {
   display: grid;
   gap: 12px;
   margin-top: 14px;
-  max-height: 590px;
-  overflow: auto;
   padding-right: 4px;
 }
 
@@ -756,4 +805,117 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.layout-editor {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.layout-editor-title,
+.layout-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layout-editor-title {
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 800;
+  color: #314052;
+}
+
+.layout-editor-title select {
+  width: 118px;
+}
+
+.layout-toolbar {
+  flex-wrap: wrap;
+}
+
+.layout-toolbar button {
+  min-width: 56px;
+}
+
+.opacity-row {
+  margin-top: 0;
+}
+
+.layout-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid #cbd5df;
+  border-radius: 8px;
+  background: #101820;
+}
+
+.layout-canvas-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px);
+  background-size: 10% 10%;
+}
+
+.layout-item {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 1px rgba(23, 32, 42, 0.4);
+  box-sizing: border-box;
+}
+
+.layout-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.layout-emoji {
+  font-size: clamp(28px, 12vw, 96px);
+  line-height: 1;
+}
+
+.layout-empty {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+@media (max-width: 1120px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-header {
+    flex-wrap: wrap;
+  }
+
+  .settings-header .primary-button {
+    width: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .settings-shell {
+    padding: 12px;
+  }
+
+  .settings-panel {
+    padding: 14px;
+  }
+
+  .button-row,
+  .panel-title-row {
+    flex-wrap: wrap;
+  }
 }

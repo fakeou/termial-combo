@@ -101,6 +101,7 @@ describe("extractNewStickerCommands", () => {
           { type: "video", url: "file:///tmp/stuck.mp4" }
         ],
         displayMode: "cycle",
+        layout: { x: 0.1, y: 0.2, width: 0.8, height: 0.7, opacity: 0.9, fit: "cover" },
         cycleIntervalMs: 700,
         durationMs: 3000
       })
@@ -115,6 +116,7 @@ describe("extractNewStickerCommands", () => {
           { type: "video", url: "file:///tmp/stuck.mp4" }
         ],
         displayMode: "cycle",
+        layout: { x: 0.1, y: 0.2, width: 0.8, height: 0.7, opacity: 0.9, fit: "cover" },
         cycleIntervalMs: 700,
         durationMs: 3000
       }

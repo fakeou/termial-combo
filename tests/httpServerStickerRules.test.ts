@@ -185,13 +185,16 @@ describe("HTTP app config", () => {
     });
 
     expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       ok: true,
       asset: {
         type: "gif",
-        path: "assets/stickers/retry-cat.gif"
+        path: "assets/stickers/retry-cat.gif",
+        url: expect.stringMatching(/^file:\/\//)
       }
     });
+    expect(payload.asset.url).toContain("/assets/stickers/retry-cat.gif");
     await expect(readFile(join(dir, "assets", "stickers", "retry-cat.gif"), "utf8")).resolves.toBe("gif-bytes");
   });
 });

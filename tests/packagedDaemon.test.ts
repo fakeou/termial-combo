@@ -2,13 +2,24 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const { buildPackagedDaemonSpawnEnv, comboTriggerIdFromPromptEvent, hasRecentStickerGrace, hasUsableWarpBounds } = require("../src/electron/packagedDaemon.cjs") as {
+const {
+  buildPackagedDaemonSpawnEnv,
+  comboTriggerIdFromPromptEvent,
+  extractNewStickerCommands,
+  fullWarpOverlayBounds,
+  hasRecentLayoutStickerGrace,
+  hasRecentStickerGrace,
+  hasUsableWarpBounds
+} = require("../src/electron/packagedDaemon.cjs") as {
   buildPackagedDaemonSpawnEnv: (options: {
     baseEnv: NodeJS.ProcessEnv;
     eventLogPath: string;
     stickerRulesPath: string;
   }) => NodeJS.ProcessEnv;
   comboTriggerIdFromPromptEvent: (event: unknown) => string | undefined;
+  extractNewStickerCommands: (events: unknown[], seenTriggerIds: Set<string>) => Array<Record<string, unknown>>;
+  fullWarpOverlayBounds: (bounds: { x: number; y: number; width: number; height: number }) => { x: number; y: number; width: number; height: number };
+  hasRecentLayoutStickerGrace: (options: { now: number; layoutStickerUntil: number; hasLastUsableWarpWindow: boolean }) => boolean;
   hasRecentStickerGrace: (options: { now: number; lastStickerAt: number; graceMs: number; hasLastUsableWarpWindow: boolean }) => boolean;
   hasUsableWarpBounds: (bounds: unknown) => boolean;
 };
@@ -113,5 +124,84 @@ describe("hasRecentStickerGrace", () => {
         hasLastUsableWarpWindow: false
       })
     ).toBe(false);
+  });
+});
+
+describe("layout sticker overlay bounds", () => {
+  it("uses the full Warp window bounds for canvas-positioned stickers", () => {
+    expect(fullWarpOverlayBounds({ x: 10.4, y: 20.5, width: 1199.6, height: 799.2 })).toEqual({
+      x: 10,
+      y: 21,
+      width: 1200,
+      height: 799
+    });
+  });
+
+  it("keeps full-window overlay mode only while a layout sticker is active", () => {
+    expect(
+      hasRecentLayoutStickerGrace({
+        now: 12_000,
+        layoutStickerUntil: 13_000,
+        hasLastUsableWarpWindow: true
+      })
+    ).toBe(true);
+    expect(
+      hasRecentLayoutStickerGrace({
+        now: 13_001,
+        layoutStickerUntil: 13_000,
+        hasLastUsableWarpWindow: true
+      })
+    ).toBe(false);
+    expect(
+      hasRecentLayoutStickerGrace({
+        now: 12_000,
+        layoutStickerUntil: 13_000,
+        hasLastUsableWarpWindow: false
+      })
+    ).toBe(false);
+  });
+});
+
+describe("extractNewStickerCommands", () => {
+  it("keeps cycle assets and layout metadata for Electron renderer commands", () => {
+    expect(
+      extractNewStickerCommands(
+        [
+          {
+            type: "sticker_triggered",
+            metadata: {
+              triggerId: "cycle",
+              asset: { type: "emoji", value: "😵" },
+              assets: [
+                { type: "emoji", value: "😵" },
+                { type: "image", url: "file:///tmp/no.png" }
+              ],
+              displayMode: "cycle",
+              cycleIntervalMs: 600,
+              durationMs: 3_000,
+              layout: { x: 0, y: 0.2, width: 1, height: 0.6, opacity: 0.75, fit: "cover" },
+              matchedKeyword: "不对",
+              ruleId: "bad"
+            }
+          }
+        ],
+        new Set()
+      )
+    ).toEqual([
+      {
+        triggerId: "cycle",
+        asset: { type: "emoji", value: "😵" },
+        assets: [
+          { type: "emoji", value: "😵" },
+          { type: "image", url: "file:///tmp/no.png" }
+        ],
+        displayMode: "cycle",
+        cycleIntervalMs: 600,
+        durationMs: 3_000,
+        layout: { x: 0, y: 0.2, width: 1, height: 0.6, opacity: 0.75, fit: "cover" },
+        matchedKeyword: "不对",
+        ruleId: "bad"
+      }
+    ]);
   });
 });

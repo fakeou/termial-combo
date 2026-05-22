@@ -3,7 +3,15 @@ const childProcess = require("node:child_process");
 const fs = require("node:fs/promises");
 const fsSync = require("node:fs");
 const path = require("node:path");
-const { buildPackagedDaemonSpawnEnv, comboTriggerIdFromPromptEvent, hasRecentStickerGrace, hasUsableWarpBounds } = require("./packagedDaemon.cjs");
+const {
+  buildPackagedDaemonSpawnEnv,
+  comboTriggerIdFromPromptEvent,
+  extractNewStickerCommands: extractNewStickerCommandsFromDaemon,
+  fullWarpOverlayBounds,
+  hasRecentLayoutStickerGrace,
+  hasRecentStickerGrace,
+  hasUsableWarpBounds
+} = require("./packagedDaemon.cjs");
 
 const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, dialog } = electron;
 
@@ -59,6 +67,7 @@ let lastCodexScanErrorAt = 0;
 let daemonProcess;
 let lastUsableWarpWindow;
 let lastStickerAt = 0;
+let layoutStickerUntil = 0;
 const stickerGraceMs = 5000;
 const seenStickerTriggerIds = new Set();
 const seenStickerTriggerIdOrder = [];
@@ -120,7 +129,7 @@ app.whenReady().then(async () => {
   await writeOverlayState({ visible: false, reason: "window_created_cjs" });
   loadRendererWithRetry();
   overlayWindow.webContents.on("did-finish-load", () => {
-    sendOverlaySettings().catch(() => {});
+    sendOverlayConfig().catch(() => {});
     sendComboState(comboCount).catch(() => {});
   });
 
@@ -201,7 +210,7 @@ function registerSettingsIpc() {
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
     const payload = await response.json();
-    await sendOverlaySettings(payload.config?.combo);
+    await sendOverlayConfig(payload.config);
     return payload.config;
   });
 
@@ -268,9 +277,15 @@ async function updateOverlay() {
 async function showOverlayForWarpWindow(active, options = {}) {
   currentWarpActive = true;
   comboCount = valueAt(Date.now());
-  const bounds = computeOverlayBounds(active.bounds, overlaySize);
+  const useFullWarpBounds = hasRecentLayoutStickerGrace({
+    now: Date.now(),
+    layoutStickerUntil,
+    hasLastUsableWarpWindow: Boolean(lastUsableWarpWindow)
+  });
+  const bounds = useFullWarpBounds ? fullWarpOverlayBounds(active.bounds) : computeOverlayBounds(active.bounds, overlaySize);
   overlayWindow.setBounds(bounds, false);
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.showInactive();
   await sendComboState(comboCount, { ifChanged: true });
   await writeOverlayState({
@@ -282,7 +297,8 @@ async function showOverlayForWarpWindow(active, options = {}) {
     inputCounterEnabled,
     codexScanOnEnterEnabled,
     selectedComboStyle,
-    comboWindowMs
+    comboWindowMs,
+    overlayMode: useFullWarpBounds ? "full-warp" : "combo"
   });
   if (process.env.OVERLAY_DEBUG === "1") {
     console.log(`[overlay] visible ${JSON.stringify({ active, overlay: bounds })}`);
@@ -386,7 +402,7 @@ function refreshTrayMenu() {
           click: () => {
             selectedComboStyle = style.id;
             refreshTrayMenu();
-            sendOverlaySettings().catch(() => {});
+            sendOverlayConfig().catch(() => {});
           }
         }))
       },
@@ -399,7 +415,7 @@ function refreshTrayMenu() {
           click: () => {
             comboWindowMs = option.value;
             refreshTrayMenu();
-            sendOverlaySettings().catch(() => {});
+            sendOverlayConfig().catch(() => {});
             sendComboState(valueAt(Date.now())).catch(() => {});
           }
         }))
@@ -522,25 +538,27 @@ async function sendComboState(count, options = {}) {
   ).catch(() => {});
 }
 
-async function sendOverlaySettings() {
+async function sendOverlayConfig(config) {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
-  let comboConfig;
+  let overlayConfig = config;
   try {
-    const response = await fetch(configUrlFromEventsUrl(daemonEventsUrl));
-    if (response.ok) {
+    if (!overlayConfig) {
+      const response = await fetch(configUrlFromEventsUrl(daemonEventsUrl));
+      if (!response.ok) return;
       const payload = await response.json();
-      comboConfig = payload.config?.combo;
-      if (comboConfig && typeof comboConfig.comboWindowMs === "number") {
-        comboWindowMs = comboConfig.comboWindowMs;
-      }
-      if (comboConfig && typeof comboConfig.style === "string" && comboConfig.style !== "custom") {
-        selectedComboStyle = comboConfig.style;
-      }
+      overlayConfig = payload.config;
+    }
+    const comboConfig = overlayConfig?.combo;
+    if (comboConfig && typeof comboConfig.comboWindowMs === "number") {
+      comboWindowMs = comboConfig.comboWindowMs;
+    }
+    if (comboConfig && typeof comboConfig.style === "string" && comboConfig.style !== "custom") {
+      selectedComboStyle = comboConfig.style;
     }
   } catch {
     // The overlay can run with menu-only settings while the daemon starts.
   }
-  const detail = JSON.stringify({ style: selectedComboStyle, comboWindowMs, combo: comboConfig });
+  const detail = JSON.stringify({ style: selectedComboStyle, comboWindowMs, combo: overlayConfig?.combo, config: overlayConfig });
   await overlayWindow.webContents.executeJavaScript(
     `window.dispatchEvent(new CustomEvent("combo-settings", { detail: ${detail} }))`
   ).catch(() => {});
@@ -584,6 +602,9 @@ async function forwardStickerCommands(events) {
   const commands = extractNewStickerCommands(events);
   for (const command of commands) {
     lastStickerAt = Date.now();
+    if (command.layout) {
+      layoutStickerUntil = Math.max(layoutStickerUntil, lastStickerAt + (command.durationMs || 2000) + 500);
+    }
     const detail = JSON.stringify(command);
     await overlayWindow.webContents.executeJavaScript(
       `window.dispatchEvent(new CustomEvent("sticker-trigger", { detail: ${detail} }))`
@@ -592,39 +613,11 @@ async function forwardStickerCommands(events) {
 }
 
 function extractNewStickerCommands(events) {
-  const commands = [];
-
-  for (const event of events) {
-    const command = stickerCommandFromEvent(event);
-    if (command) commands.push(command);
+  const commands = extractNewStickerCommandsFromDaemon(events, seenStickerTriggerIds);
+  for (const command of commands) {
+    rememberStickerTriggerId(command.triggerId);
   }
-
   return commands;
-}
-
-function stickerCommandFromEvent(event) {
-  if (!event || event.type !== "sticker_triggered" || !isRecord(event.metadata)) return undefined;
-
-  const triggerId = stringValue(event.metadata.triggerId);
-  if (!triggerId || seenStickerTriggerIds.has(triggerId)) return undefined;
-
-  const asset = stickerAssetFromUnknown(event.metadata.asset);
-  if (!asset) return undefined;
-
-  rememberStickerTriggerId(triggerId);
-  const command = {
-    triggerId,
-    asset,
-    durationMs: clampStickerDuration(event.metadata.durationMs)
-  };
-
-  const matchedKeyword = stringValue(event.metadata.matchedKeyword);
-  if (matchedKeyword) command.matchedKeyword = matchedKeyword;
-
-  const ruleId = stringValue(event.metadata.ruleId);
-  if (ruleId) command.ruleId = ruleId;
-
-  return command;
 }
 
 function rememberStickerTriggerId(triggerId) {
@@ -653,40 +646,6 @@ function rememberComboTriggerId(triggerId) {
       seenComboTriggerIds.delete(oldestTriggerId);
     }
   }
-}
-
-function stickerAssetFromUnknown(input) {
-  if (!isRecord(input) || typeof input.type !== "string") return undefined;
-
-  if (input.type === "emoji") {
-    const emojiValue = stringValue(input.value);
-    return emojiValue ? { type: "emoji", value: emojiValue } : undefined;
-  }
-
-  if (!isUrlStickerAssetType(input.type)) return undefined;
-
-  const url = stringValue(input.url);
-  return url ? { type: input.type, url } : undefined;
-}
-
-function clampStickerDuration(value) {
-  const duration = typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 2000;
-  return Math.min(5000, Math.max(1, duration));
-}
-
-function stringValue(value) {
-  if (typeof value !== "string") return undefined;
-
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
-function isUrlStickerAssetType(value) {
-  return value === "image" || value === "gif" || value === "video";
-}
-
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isWarpWindow(info) {

@@ -1,4 +1,5 @@
 import { ContextEvent } from "../types.js";
+import { clampStickerLayout, StickerLayout } from "../stickerLayout.js";
 
 export type StickerCommandAsset =
   | { type: "emoji"; value: string }
@@ -11,6 +12,7 @@ export interface StickerCommand {
   asset: StickerCommandAsset;
   assets?: StickerCommandAsset[];
   displayMode?: "single" | "cycle";
+  layout?: StickerLayout;
   cycleIntervalMs?: number;
   durationMs: number;
   matchedKeyword?: string;
@@ -47,6 +49,10 @@ export function extractNewStickerCommands(
     if (event.metadata.displayMode === "cycle" && (command.assets?.length ?? 0) > 1) {
       command.displayMode = "cycle";
       command.cycleIntervalMs = clampCycleInterval(event.metadata.cycleIntervalMs);
+    }
+
+    if (isRecord(event.metadata.layout)) {
+      command.layout = clampStickerLayout(event.metadata.layout);
     }
 
     const matchedKeyword = stringValue(event.metadata.matchedKeyword);
