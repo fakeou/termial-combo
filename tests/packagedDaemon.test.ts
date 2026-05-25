@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const {
   buildPackagedDaemonSpawnEnv,
+  comboStagePositionWithinFullWarp,
   comboTriggerIdFromPromptEvent,
   extractNewStickerCommands,
   fullWarpOverlayBounds,
@@ -16,6 +17,10 @@ const {
     eventLogPath: string;
     stickerRulesPath: string;
   }) => NodeJS.ProcessEnv;
+  comboStagePositionWithinFullWarp: (
+    bounds: { x: number; y: number; width: number; height: number },
+    options: { width: number; height: number; margin: number }
+  ) => { left: number; top: number };
   comboTriggerIdFromPromptEvent: (event: unknown) => string | undefined;
   extractNewStickerCommands: (events: unknown[], seenTriggerIds: Set<string>) => Array<Record<string, unknown>>;
   fullWarpOverlayBounds: (bounds: { x: number; y: number; width: number; height: number }) => { x: number; y: number; width: number; height: number };
@@ -135,6 +140,15 @@ describe("layout sticker overlay bounds", () => {
       width: 1200,
       height: 799
     });
+  });
+
+  it("keeps the combo stage at the compact overlay center when a layout sticker expands the overlay", () => {
+    expect(
+      comboStagePositionWithinFullWarp(
+        { x: 10, y: 20, width: 1200, height: 800 },
+        { width: 360, height: 320, margin: -4 }
+      )
+    ).toEqual({ left: 1024, top: 156 });
   });
 
   it("keeps full-window overlay mode only while a layout sticker is active", () => {

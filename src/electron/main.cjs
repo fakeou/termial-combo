@@ -5,6 +5,7 @@ const fsSync = require("node:fs");
 const path = require("node:path");
 const {
   buildPackagedDaemonSpawnEnv,
+  comboStagePositionWithinFullWarp,
   comboTriggerIdFromPromptEvent,
   extractNewStickerCommands: extractNewStickerCommandsFromDaemon,
   fullWarpOverlayBounds,
@@ -283,16 +284,19 @@ async function showOverlayForWarpWindow(active, options = {}) {
     hasLastUsableWarpWindow: Boolean(lastUsableWarpWindow)
   });
   const bounds = useFullWarpBounds ? fullWarpOverlayBounds(active.bounds) : computeOverlayBounds(active.bounds, overlaySize);
+  const comboStage = useFullWarpBounds ? comboStagePositionWithinFullWarp(active.bounds, overlaySize) : undefined;
   overlayWindow.setBounds(bounds, false);
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWindow.setIgnoreMouseEvents(true, { forward: true });
   overlayWindow.showInactive();
+  await sendOverlayGeometry({ comboStage });
   await sendComboState(comboCount, { ifChanged: true });
   await writeOverlayState({
     visible: true,
     reason: options.reason,
     active,
     overlay: bounds,
+    comboStage,
     comboCount,
     inputCounterEnabled,
     codexScanOnEnterEnabled,
@@ -303,6 +307,14 @@ async function showOverlayForWarpWindow(active, options = {}) {
   if (process.env.OVERLAY_DEBUG === "1") {
     console.log(`[overlay] visible ${JSON.stringify({ active, overlay: bounds })}`);
   }
+}
+
+async function sendOverlayGeometry(detail) {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const payload = JSON.stringify({ comboStage: detail.comboStage ?? null });
+  await overlayWindow.webContents.executeJavaScript(
+    `window.dispatchEvent(new CustomEvent("overlay-geometry", { detail: ${payload} }))`
+  ).catch(() => {});
 }
 
 function recentComboWarpWindow() {

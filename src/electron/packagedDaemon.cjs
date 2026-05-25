@@ -178,8 +178,16 @@ function fullWarpOverlayBounds(bounds) {
   };
 }
 
+function comboStagePositionWithinFullWarp(bounds, options) {
+  return {
+    left: Math.round(bounds.width - options.width - options.margin + options.width / 2),
+    top: Math.round(options.margin + options.height / 2)
+  };
+}
+
 module.exports = {
   buildPackagedDaemonSpawnEnv,
+  comboStagePositionWithinFullWarp,
   comboTriggerIdFromPromptEvent,
   extractNewStickerCommands,
   fullWarpOverlayBounds,

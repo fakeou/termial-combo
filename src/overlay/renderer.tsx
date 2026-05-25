@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import confetti from "canvas-confetti";
 import { Rnd } from "react-rnd";
 import { comboThemeForCount } from "./comboTheme.js";
+import { comboStageStyle, ComboStagePosition } from "./comboStageStyle.js";
 import { comboVisualState } from "./comboVisualState.js";
 import { keywordsToDraft, parseKeywordDraft } from "./keywordInput.js";
 import { canvasRectToLayout, layoutToCanvasRect, presetStickerLayout } from "./layoutCanvas.js";
@@ -90,6 +91,7 @@ function OverlayBadge(): React.ReactElement {
     comboWindowMs: defaultComboWindowMs,
     hitNonce: 0
   });
+  const [comboStagePosition, setComboStagePosition] = React.useState<ComboStagePosition | undefined>(undefined);
   const [now, setNow] = React.useState(Date.now());
 
   React.useEffect(() => {
@@ -126,6 +128,15 @@ function OverlayBadge(): React.ReactElement {
     };
     window.addEventListener("combo-settings", listener);
     return () => window.removeEventListener("combo-settings", listener);
+  }, []);
+
+  React.useEffect(() => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      setComboStagePosition(comboStagePositionFromDetail(detail));
+    };
+    window.addEventListener("overlay-geometry", listener);
+    return () => window.removeEventListener("overlay-geometry", listener);
   }, []);
 
   React.useEffect(() => {
@@ -246,7 +257,7 @@ function OverlayBadge(): React.ReactElement {
     >
       <canvas ref={fireworkCanvasRef} className="sss-fireworks" aria-hidden="true" />
       {visual.visible && (
-        <section className="combo-stage" style={{ opacity: visual.opacity }}>
+        <section className="combo-stage" style={comboStageStyle(visual.opacity, comboStagePosition)}>
           <div className="speed-lines" key={`lines-${combo.hitNonce}`}>
             {Array.from({ length: 6 }, (_, index) => (
               <span key={index} style={{ "--i": index } as React.CSSProperties} />
@@ -817,6 +828,15 @@ function isComboDesign(value: unknown): value is typeof defaultComboDesign {
 
 function isAppConfig(value: unknown): value is AppConfig {
   return isRecord(value) && isComboDesign(value.combo) && Array.isArray(value.rules);
+}
+
+function comboStagePositionFromDetail(value: unknown): ComboStagePosition | undefined {
+  if (!isRecord(value)) return undefined;
+  const position = value.comboStage;
+  if (!isRecord(position)) return undefined;
+  if (typeof position.left !== "number" || !Number.isFinite(position.left)) return undefined;
+  if (typeof position.top !== "number" || !Number.isFinite(position.top)) return undefined;
+  return { left: position.left, top: position.top };
 }
 
 function isStickerLayout(value: unknown): value is StickerLayout {
