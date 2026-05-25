@@ -4,6 +4,7 @@ import confetti from "canvas-confetti";
 import { Rnd } from "react-rnd";
 import { comboThemeForCount } from "./comboTheme.js";
 import { comboVisualState } from "./comboVisualState.js";
+import { keywordsToDraft, parseKeywordDraft } from "./keywordInput.js";
 import { canvasRectToLayout, layoutToCanvasRect, presetStickerLayout } from "./layoutCanvas.js";
 import { stickerTimingForDuration } from "./stickerTiming.js";
 import { clampStickerLayout, defaultStickerLayout, StickerLayout, StickerLayoutFit } from "../stickerLayout.js";
@@ -515,6 +516,10 @@ function RuleEditor({ rule, onChange, onDelete }: {
   onDelete: () => void;
 }): React.ReactElement {
   const assets = rule.assets?.length ? rule.assets : rule.asset ? [rule.asset] : [];
+  const [keywordDraft, setKeywordDraft] = React.useState(() => keywordsToDraft(rule.keywords));
+  React.useEffect(() => {
+    setKeywordDraft(keywordsToDraft(rule.keywords));
+  }, [rule.id]);
   const addEmoji = () => onChange({ assets: [...assets, { type: "emoji", value: "😵" }], asset: assets[0] ?? { type: "emoji", value: "😵" } });
   const upload = async () => {
     const asset = await chooseAsset();
@@ -544,7 +549,13 @@ function RuleEditor({ rule, onChange, onDelete }: {
       </div>
       <label>
         关键词，用逗号分隔
-        <input value={rule.keywords.join(", ")} onChange={(event) => onChange({ keywords: splitKeywords(event.target.value) })} />
+        <input
+          value={keywordDraft}
+          onChange={(event) => {
+            setKeywordDraft(event.target.value);
+            onChange({ keywords: parseKeywordDraft(event.target.value) });
+          }}
+        />
       </label>
       <label>
         循环间隔 ms
@@ -679,8 +690,31 @@ function LayoutCanvasEditor({
 function StickerAssetPreview({ asset, fit }: { asset?: StickerAsset; fit: StickerLayoutFit }): React.ReactElement {
   if (!asset) return <span className="layout-empty">无素材</span>;
   if (asset.type === "emoji") return <span className="layout-emoji">{asset.value}</span>;
-  if (asset.type === "video") return <video className="layout-media" src={asset.url} muted autoPlay loop playsInline style={{ objectFit: fit }} />;
-  return <img className="layout-media" src={asset.url} alt="" style={{ objectFit: fit }} />;
+  if (asset.type === "video") {
+    return (
+      <video
+        className="layout-media"
+        src={asset.url}
+        muted
+        autoPlay
+        loop
+        playsInline
+        draggable={false}
+        onDragStart={(event) => event.preventDefault()}
+        style={{ objectFit: fit }}
+      />
+    );
+  }
+  return (
+    <img
+      className="layout-media"
+      src={asset.url}
+      alt=""
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
+      style={{ objectFit: fit }}
+    />
+  );
 }
 
 function launchSssFireworks(canvas: HTMLCanvasElement | null, onDone: () => void): void {
@@ -820,10 +854,6 @@ function isUrlStickerAssetType(value: string): value is "image" | "gif" | "video
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function splitKeywords(value: string): string[] {
-  return value.split(/[,，]/).map((keyword) => keyword.trim()).filter(Boolean);
 }
 
 function newRule(): AppConfig["rules"][number] {

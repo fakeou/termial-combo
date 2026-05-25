@@ -26,4 +26,13 @@ describe("overlay settings style", () => {
     expect(css).toMatch(/\.form-row\s*>\s*label\s*\{[^}]*min-width:\s*160px;/s);
     expect(css).toMatch(/input,\s*select\s*\{[^}]*width:\s*100%;/s);
   });
+
+  it("prevents native media dragging inside the layout canvas", async () => {
+    const css = await readFile("src/overlay/style.css", "utf8");
+    const mediaBlock = css.match(/\.layout-media\s*\{(?<body>[^}]*)\}/s)?.groups?.body ?? "";
+
+    expect(mediaBlock).toMatch(/pointer-events:\s*none;/);
+    expect(mediaBlock).toMatch(/user-select:\s*none;/);
+    expect(mediaBlock).toMatch(/-webkit-user-drag:\s*none;/);
+  });
 });
