@@ -4,6 +4,7 @@ import { JsonlEventStore } from "../eventStore.js";
 import { createEventServer, listen } from "../httpServer.js";
 import { postEvent } from "../client.js";
 import { loadAppConfig } from "../appConfig.js";
+import { ClaudeHistoryTailer } from "../claude/historyTailer.js";
 import { CodexHistoryTailer } from "../codex/historyTailer.js";
 import { getActiveWindowInfo, toWindowEvents, ActiveWindowInfo } from "../windowDetector.js";
 
@@ -22,13 +23,20 @@ const codexHistoryPath = process.env.CODEX_HISTORY_PATH
   ? resolve(process.env.CODEX_HISTORY_PATH)
   : join(homedir(), ".codex", "history.jsonl");
 const codexHistoryPollMs = Number(process.env.CODEX_HISTORY_POLL_MS ?? "100");
+const claudeHistoryTailEnabled = process.env.CLAUDE_HISTORY_TAIL !== "0";
+const claudeHistoryPath = process.env.CLAUDE_HISTORY_PATH
+  ? resolve(process.env.CLAUDE_HISTORY_PATH)
+  : join(homedir(), ".claude", "history.jsonl");
+const claudeHistoryPollMs = Number(process.env.CLAUDE_HISTORY_POLL_MS ?? "100");
 
 const store = new JsonlEventStore({ logPath, recentLimit });
 let previous: ActiveWindowInfo | undefined;
 let isPollingWindow = false;
 let lastWindowErrorAt = 0;
 let lastCodexHistoryErrorAt = 0;
+let lastClaudeHistoryErrorAt = 0;
 let codexHistoryTailer: CodexHistoryTailer | undefined;
+let claudeHistoryTailer: ClaudeHistoryTailer | undefined;
 
 if (codexHistoryTailEnabled) {
   codexHistoryTailer = new CodexHistoryTailer({
@@ -49,6 +57,31 @@ if (codexHistoryTailEnabled) {
           phase: "codex_history_tail",
           historyPath: codexHistoryPath,
           hint: "Set CODEX_HISTORY_TAIL=0 to disable Codex history monitoring."
+        }
+      });
+    }
+  });
+}
+
+if (claudeHistoryTailEnabled) {
+  claudeHistoryTailer = new ClaudeHistoryTailer({
+    historyPath: claudeHistoryPath,
+    pollMs: claudeHistoryPollMs,
+    onEvent: async (event) => {
+      await postEvent(event, endpoint);
+    },
+    onError: async (error) => {
+      const now = Date.now();
+      if (now - lastClaudeHistoryErrorAt <= 60_000) return;
+      lastClaudeHistoryErrorAt = now;
+      await store.add({
+        type: "hook_error",
+        source: "claude-history",
+        text: error instanceof Error ? error.message : String(error),
+        metadata: {
+          phase: "claude_history_tail",
+          historyPath: claudeHistoryPath,
+          hint: "Set CLAUDE_HISTORY_TAIL=0 to disable Claude history monitoring."
         }
       });
     }
@@ -87,6 +120,9 @@ const server = createEventServer({
 if (codexHistoryTailer) {
   await codexHistoryTailer.start();
 }
+if (claudeHistoryTailer) {
+  await claudeHistoryTailer.start();
+}
 
 await listen(server, port, host);
 console.log(`[warp-ai-context] daemon listening on http://${host}:${port}`);
@@ -94,6 +130,9 @@ console.log(`[warp-ai-context] writing events to ${logPath}`);
 console.log(`[warp-ai-context] loading app config from ${appConfigPath}`);
 if (codexHistoryTailEnabled) {
   console.log(`[warp-ai-context] tailing Codex history from ${codexHistoryPath}`);
+}
+if (claudeHistoryTailEnabled) {
+  console.log(`[warp-ai-context] tailing Claude history from ${claudeHistoryPath}`);
 }
 
 setInterval(async () => {
