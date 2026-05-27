@@ -390,7 +390,7 @@ function SettingsApp(): React.ReactElement {
     <main className="settings-shell">
       <header className="settings-header">
         <div>
-          <h1>Termial Combo 编辑器</h1>
+          <h1>Termial Combo</h1>
           <p>编辑 Combo 外观、预览效果，并配置 prompt 关键词触发的贴纸规则。</p>
         </div>
         <button className="primary-button" onClick={save}>保存配置</button>
@@ -893,10 +893,29 @@ function newRule(): AppConfig["rules"][number] {
 async function loadConfig(): Promise<AppConfig> {
   const api = settingsApi();
   if (api) return api.invoke("termial:get-config");
-  const response = await fetch("http://127.0.0.1:39877/config");
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return payload.config;
+  try {
+    const response = await fetch("http://127.0.0.1:39877/config");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    return payload.config;
+  } catch {
+    return {
+      combo: { ...defaultComboDesign },
+      rules: [
+        {
+          id: "demo-rule-1",
+          enabled: true,
+          keywords: ["不对", "报错"],
+          asset: { type: "emoji", value: "😵" },
+          assets: [{ type: "emoji", value: "😵" }],
+          displayMode: "single",
+          cycleIntervalMs: 750,
+          durationMs: 2000,
+          layout: defaultStickerLayout
+        }
+      ]
+    };
+  }
 }
 
 async function saveConfig(config: AppConfig): Promise<AppConfig> {
