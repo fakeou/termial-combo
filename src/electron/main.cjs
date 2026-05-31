@@ -381,12 +381,20 @@ function startInputActivityHelper() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAAQElEQVR4nGNgGPTgPxGAYgOobhBeA4m1kSKDCHqHGINIMoTmBpFsCE0NIssQmF9E4k4nIv1hAIoNItkLXZkUAADivT+OM47jQAAAAABJRU5ErkJggg=="
-  );
+  const iconPath = path.join(projectRoot, "assets", "tray-icon.png");
+  let icon;
+  if (fsSync.existsSync(iconPath)) {
+    icon = nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 });
+    logMain(`tray icon loaded from file=${iconPath} size=${JSON.stringify(icon.getSize())}`);
+  } else {
+    logMain(`tray icon file not found at=${iconPath}, using fallback`);
+    icon = nativeImage.createFromDataURL(
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAN0lEQVR4nGNgGETgPx5ME0PJNpgmhhIymCouI8twcg0degaTBUZ4uh28mYFuhtLUYFyGj4KRAgAV7ZBw/9WEmAAAAABJRU5ErkJggg=="
+    ).resize({ width: 18, height: 18 });
+  }
   icon.setTemplateImage(true);
   tray = new Tray(icon);
-  tray.setTitle("⚡");
+  logMain(`tray created iconSize=${JSON.stringify(icon.getSize())} isEmpty=${icon.isEmpty()}`);
   tray.setToolTip("Warp Combo Overlay");
   refreshTrayMenu();
   tray.on("click", () => {
